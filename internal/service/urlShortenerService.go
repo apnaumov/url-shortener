@@ -18,7 +18,7 @@ func NewUrlShortenerService() *UrlShortenerService {
 	}
 }
 
-func (shortenerService UrlShortenerService) GetFullURL(shortURL string) (string, error) {
+func (shortenerService *UrlShortenerService) GetFullURL(shortURL string) (string, error) {
 	shortenerService.mu.RLock()
 	defer shortenerService.mu.RUnlock()
 	v, ok := shortenerService.shortenerUrls[shortURL]

@@ -12,16 +12,19 @@ import (
 )
 
 var shortenerService = service.NewUrlShortenerService()
+var serverAddr string
 
 func RootMiddleware(fullAddr string) http.Handler {
+	serverAddr = fullAddr
 	log.SetOutput(os.Stdout)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		if r.Method == http.MethodPost {
-			err := postNewURL(w, r, fullAddr)
+			err := postNewURL(w, r)
 			if err != nil {
 				log.Print(err.Error())
-				http.Error(w, err.Error(), 400)
+				http.Error(w, err.Error(), http.StatusBadRequest)
 			}
 			return
 		}
@@ -30,16 +33,16 @@ func RootMiddleware(fullAddr string) http.Handler {
 			err := getFullURL(w, r)
 			if err != nil {
 				log.Print(err.Error())
-				http.Error(w, err.Error(), 400)
+				http.Error(w, err.Error(), http.StatusBadRequest)
 			}
 			return
 		}
 		log.Print("Method not allowed")
-		http.Error(w, "Method not allowed", 400)
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
 	})
 }
 
-func postNewURL(w http.ResponseWriter, r *http.Request, serverAddr string) error {
+func postNewURL(w http.ResponseWriter, r *http.Request) error {
 	if r.URL.Path != "/" {
 		return fmt.Errorf("Method not allowed")
 	}

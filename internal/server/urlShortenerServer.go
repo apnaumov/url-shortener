@@ -1,8 +1,7 @@
-package router
+package server
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/apnaumov/url-shortener.git/internal/handler"
 )
@@ -11,12 +10,10 @@ type UrlShortenerServer struct {
 }
 
 func (serv UrlShortenerServer) StartUrlShortenerServer() {
-	mux := http.NewServeMux()
 	addr := "localhost:8080"
+	handler.ServerAddr = "http://" + addr
 
-	mux.Handle(`/`, handler.RootMiddleware(strings.Join([]string{"http://", addr}, "")))
-
-	err := http.ListenAndServe(addr, mux)
+	err := http.ListenAndServe(addr, handler.InitRouter())
 	if err != nil {
 		panic(err)
 	}

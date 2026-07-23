@@ -1,8 +1,8 @@
 package main
 
-import "github.com/apnaumov/url-shortener.git/internal/router"
+import "github.com/apnaumov/url-shortener.git/internal/server"
 
 func main() {
-	server := router.UrlShortenerServer{}
+	server := server.UrlShortenerServer{}
 	server.StartUrlShortenerServer()
 }

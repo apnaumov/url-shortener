@@ -8,29 +8,30 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestRootMiddleware(t *testing.T) {
-	t.Run("Wrond method", func(t *testing.T) {
-		body := "https://practicum.yandex.ru"
-		putRequest := httptest.NewRequest(http.MethodPut, serverAddr+"/", strings.NewReader(body))
+func TestRouterForMethodNotAllowed(t *testing.T) {
+	ts := httptest.NewServer(InitRouter())
+	ServerAddr = ts.URL
 
-		putW := httptest.NewRecorder()
+	req, err := http.NewRequest(http.MethodPut, ServerAddr+"/", strings.NewReader("Example body"))
+	require.NoError(t, err)
 
-		RootMiddleware("http://localhost:8080").ServeHTTP(putW, putRequest)
+	resp, err := ts.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
 
-		putBuf, putReadErr := io.ReadAll(putW.Result().Body)
-		assert.Nil(t, putReadErr)
-		putW.Result().Body.Close()
+	buf, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 
-		assert.Equal(t, "Method not allowed\n", string(putBuf))
-		assert.Equal(t, http.StatusBadRequest, putW.Result().StatusCode)
-
-	})
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "Method not allowed\n", string(buf))
 }
 
 func TestPostNewURL(t *testing.T) {
-	serverAddr = "http://localhost:8080"
+	ts := httptest.NewServer(InitRouter())
+	ServerAddr = ts.URL
 
 	type postMethod struct {
 		prefix      string
@@ -38,16 +39,11 @@ func TestPostNewURL(t *testing.T) {
 		body        string
 	}
 
-	type wantError struct {
-		hasError bool
-		errorRes string
-	}
-
 	type want struct {
-		code         int
-		bodyNotEmpty bool
-		contentType  string
-		wantError    wantError
+		code          int
+		bodyNotEmpty  bool
+		prefferedBody string
+		contentType   string
 	}
 	tests := []struct {
 		name       string
@@ -62,21 +58,9 @@ func TestPostNewURL(t *testing.T) {
 				body:        "http://abc.abc",
 			},
 			want: want{
-				code:         201,
+				code:         http.StatusCreated,
 				bodyNotEmpty: true,
 				contentType:  "text/plain",
-				wantError:    wantError{hasError: false},
-			},
-		},
-		{
-			name: "method not allowed test",
-			postMethod: postMethod{
-				prefix:      "try/to/check/another/prefix/",
-				contentType: "text/plain",
-				body:        "body",
-			},
-			want: want{
-				wantError: wantError{hasError: true, errorRes: "Method not allowed"},
 			},
 		},
 		{
@@ -86,7 +70,10 @@ func TestPostNewURL(t *testing.T) {
 				contentType: "application/json",
 			},
 			want: want{
-				wantError: wantError{hasError: true, errorRes: "Content-type incorrect"},
+				code:          400,
+				bodyNotEmpty:  true,
+				prefferedBody: "Content-type incorrect\n",
+				contentType:   "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -97,93 +84,90 @@ func TestPostNewURL(t *testing.T) {
 				body:        "",
 			},
 			want: want{
-				wantError: wantError{hasError: true, errorRes: "Body must be not empty"},
+				code:          400,
+				bodyNotEmpty:  true,
+				prefferedBody: "Body must be not empty\n",
+				contentType:   "text/plain; charset=utf-8",
 			},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, strings.Join([]string{serverAddr, test.postMethod.prefix}, "/"), strings.NewReader(test.postMethod.body))
+			request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ServerAddr, test.postMethod.prefix}, "/"), strings.NewReader(test.postMethod.body))
+			require.NoError(t, err)
 			request.Header.Set("Content-Type", test.postMethod.contentType)
 
-			// создаём новый Recorder
-			w := httptest.NewRecorder()
-
-			err := postNewURL(w, request)
-
-			if test.want.wantError.hasError {
-				assert.NotNil(t, err)
-				assert.Equal(t, test.want.wantError.errorRes, err.Error())
-				return
-			}
-
-			res := w.Result()
+			resp, err := ts.Client().Do(request)
+			require.NoError(t, err)
 
 			// проверяем код ответа
-			assert.Equal(t, test.want.code, res.StatusCode)
+			assert.Equal(t, test.want.code, resp.StatusCode)
 			// получаем и проверяем тело запроса
-			defer res.Body.Close()
-			resBody, err := io.ReadAll(res.Body)
+			defer resp.Body.Close()
+			resBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
 			if test.want.bodyNotEmpty {
 				assert.NotEmpty(t, resBody)
+				if len(test.want.prefferedBody) != 0 {
+					assert.Equal(t, test.want.prefferedBody, string(resBody))
+				}
 			}
 
 			// Проверяем заголовок Content-Type
-			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))
+			assert.Equal(t, test.want.contentType, resp.Header.Get("Content-Type"))
 		})
 	}
 }
 
 func TestGetFullUrl(t *testing.T) {
-	serverAddr = "http://localhost:8080"
+	ts := httptest.NewServer(InitRouter())
+	ServerAddr = ts.URL
+	ts.Client().CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		// Возвращаем ошибку, чтобы остановить автоматическое следование
+		return http.ErrUseLastResponse
+	}
 
 	t.Run("positive test", func(t *testing.T) {
 		body := "https://practicum.yandex.ru"
-		postRequest := httptest.NewRequest(http.MethodPost, serverAddr+"/", strings.NewReader(body))
+		postRequest, err := http.NewRequest(http.MethodPost, ServerAddr+"/", strings.NewReader(body))
+		require.NoError(t, err)
 		postRequest.Header.Set("Content-Type", "text/plain")
 
-		postW := httptest.NewRecorder()
+		postResp, err := ts.Client().Do(postRequest)
+		require.NoError(t, err)
 
-		postErr := postNewURL(postW, postRequest)
+		assert.Equal(t, http.StatusCreated, postResp.StatusCode)
 
-		assert.Nil(t, postErr)
+		postBuf, err := io.ReadAll(postResp.Body)
+		require.NoError(t, err)
+		defer postResp.Body.Close()
 
-		postBuf, postReadErr := io.ReadAll(postW.Result().Body)
-		assert.Nil(t, postReadErr)
-		postW.Result().Body.Close()
+		getRequest, err := http.NewRequest(http.MethodGet, string(postBuf), nil)
+		require.NoError(t, err)
 
-		getRequest := httptest.NewRequest(http.MethodGet, string(postBuf), nil)
+		getResp, err := ts.Client().Do(getRequest)
+		require.NoError(t, err)
+		defer getResp.Body.Close()
 
-		getW := httptest.NewRecorder()
+		locationHeader := getResp.Header.Get("Location")
 
-		getErr := getFullURL(getW, getRequest)
-		assert.Nil(t, getErr)
-
-		locationHeader := getW.Result().Header.Get("Location")
-
-		assert.Equal(t, getW.Result().StatusCode, http.StatusTemporaryRedirect)
+		assert.Equal(t, http.StatusTemporaryRedirect, getResp.StatusCode)
 		assert.Equal(t, body, locationHeader)
 	})
 
-	t.Run("method not allowed", func(t *testing.T) {
-		getRequest := httptest.NewRequest(http.MethodGet, serverAddr+"/", nil)
-
-		getW := httptest.NewRecorder()
-
-		getErr := getFullURL(getW, getRequest)
-
-		assert.NotNil(t, getErr)
-		assert.Equal(t, "Method not allowed", getErr.Error())
-	})
-
 	t.Run("can't find fullUrl", func(t *testing.T) {
-		getRequest := httptest.NewRequest(http.MethodGet, serverAddr+"/ASDQWE", nil)
+		getRequest, err := http.NewRequest(http.MethodGet, ServerAddr+"/ASDQWE", nil)
+		require.NoError(t, err)
 
-		getW := httptest.NewRecorder()
+		getResp, err := ts.Client().Do(getRequest)
+		require.NoError(t, err)
+		defer getResp.Body.Close()
 
-		getErr := getFullURL(getW, getRequest)
+		getBuf, err := io.ReadAll(getResp.Body)
+		require.NoError(t, err)
 
-		assert.NotNil(t, getErr)
-		assert.Equal(t, "Can't find URL", getErr.Error())
+		assert.Equal(t, http.StatusBadRequest, getResp.StatusCode)
+		assert.Equal(t, "Can't find URL\n", string(getBuf))
 	})
 }

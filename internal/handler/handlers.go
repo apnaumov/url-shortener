@@ -8,15 +8,23 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-var ServerAddr string
-var shortenerService = service.NewUrlShortenerService()
+var shortenerService *service.UrlShortenerService
 
-func InitRouter() *chi.Mux {
+func InitRouter(urlBaseAddr string) (*chi.Mux, error) {
 	r := chi.NewRouter()
 	r.Post("/", postNewURL)
 	r.Get("/{shortPath}", getFullURL)
 	r.MethodNotAllowed(methodNotAllowed)
-	return r
+
+	shortener, err := service.NewUrlShortenerService(urlBaseAddr)
+
+	if err != nil {
+		return nil, err
+	}
+
+	shortenerService = shortener
+
+	return r, nil
 }
 
 func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +48,7 @@ func postNewURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullURL := ServerAddr + "/" + shortenerService.SetFullURL(string(body))
+	fullURL := shortenerService.SetFullURL(string(body))
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)

@@ -11,11 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRouterForMethodNotAllowed(t *testing.T) {
-	ts := httptest.NewServer(InitRouter())
-	ServerAddr = ts.URL
+func setUpServer(t *testing.T) *httptest.Server {
+	// получение URL и последующая настройка
+	ts := httptest.NewUnstartedServer(nil)
+	mux, err := InitRouter("http://" + ts.Listener.Addr().String())
+	require.NoError(t, err)
+	ts.Config.Handler = mux
 
-	req, err := http.NewRequest(http.MethodPut, ServerAddr+"/", strings.NewReader("Example body"))
+	return ts
+}
+
+func TestRouterForMethodNotAllowed(t *testing.T) {
+	ts := setUpServer(t)
+	ts.Start()
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodPut, ts.URL+"/", strings.NewReader("Example body"))
 	require.NoError(t, err)
 
 	resp, err := ts.Client().Do(req)
@@ -30,8 +41,9 @@ func TestRouterForMethodNotAllowed(t *testing.T) {
 }
 
 func TestPostNewURL(t *testing.T) {
-	ts := httptest.NewServer(InitRouter())
-	ServerAddr = ts.URL
+	ts := setUpServer(t)
+	ts.Start()
+	defer ts.Close()
 
 	type postMethod struct {
 		prefix      string
@@ -93,7 +105,7 @@ func TestPostNewURL(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ServerAddr, test.postMethod.prefix}, "/"), strings.NewReader(test.postMethod.body))
+			request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, test.postMethod.prefix}, "/"), strings.NewReader(test.postMethod.body))
 			require.NoError(t, err)
 			request.Header.Set("Content-Type", test.postMethod.contentType)
 
@@ -121,8 +133,10 @@ func TestPostNewURL(t *testing.T) {
 }
 
 func TestGetFullUrl(t *testing.T) {
-	ts := httptest.NewServer(InitRouter())
-	ServerAddr = ts.URL
+	ts := setUpServer(t)
+	ts.Start()
+	defer ts.Close()
+
 	ts.Client().CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		// Возвращаем ошибку, чтобы остановить автоматическое следование
 		return http.ErrUseLastResponse
@@ -130,7 +144,7 @@ func TestGetFullUrl(t *testing.T) {
 
 	t.Run("positive test", func(t *testing.T) {
 		body := "https://practicum.yandex.ru"
-		postRequest, err := http.NewRequest(http.MethodPost, ServerAddr+"/", strings.NewReader(body))
+		postRequest, err := http.NewRequest(http.MethodPost, ts.URL+"/", strings.NewReader(body))
 		require.NoError(t, err)
 		postRequest.Header.Set("Content-Type", "text/plain")
 
@@ -157,7 +171,7 @@ func TestGetFullUrl(t *testing.T) {
 	})
 
 	t.Run("can't find fullUrl", func(t *testing.T) {
-		getRequest, err := http.NewRequest(http.MethodGet, ServerAddr+"/ASDQWE", nil)
+		getRequest, err := http.NewRequest(http.MethodGet, ts.URL+"/ASDQWE", nil)
 		require.NoError(t, err)
 
 		getResp, err := ts.Client().Do(getRequest)

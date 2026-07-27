@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -12,11 +14,12 @@ import (
 )
 
 func setUpServer(t *testing.T) *httptest.Server {
+	t.Helper()
 	// получение URL и последующая настройка
 	ts := httptest.NewUnstartedServer(nil)
-	mux, err := InitRouter("http://" + ts.Listener.Addr().String())
+	router, err := NewUrlShortenerRouter("http://" + ts.Listener.Addr().String())
 	require.NoError(t, err)
-	ts.Config.Handler = mux
+	ts.Config.Handler = router.Mux
 
 	return ts
 }
@@ -171,7 +174,10 @@ func TestGetFullUrl(t *testing.T) {
 	})
 
 	t.Run("can't find fullUrl", func(t *testing.T) {
-		getRequest, err := http.NewRequest(http.MethodGet, ts.URL+"/ASDQWE", nil)
+		const shortURL = "ASDQWE"
+		reqURL, err := url.JoinPath(ts.URL, "/", shortURL)
+		require.NoError(t, err)
+		getRequest, err := http.NewRequest(http.MethodGet, reqURL, nil)
 		require.NoError(t, err)
 
 		getResp, err := ts.Client().Do(getRequest)
@@ -182,6 +188,6 @@ func TestGetFullUrl(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, http.StatusBadRequest, getResp.StatusCode)
-		assert.Equal(t, "Can't find URL\n", string(getBuf))
+		assert.Equal(t, fmt.Sprintf("can't find URL by the key %q\n", shortURL), string(getBuf))
 	})
 }

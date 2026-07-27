@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/apnaumov/url-shortener.git/internal/config"
@@ -10,13 +11,13 @@ import (
 func StartUrlShortenerServer() {
 	conf := config.InitConfigFromCLI()
 
-	mux, err := handler.InitRouter(conf.ServerBaseUrl)
+	router, err := handler.NewUrlShortenerRouter(conf.ServerBaseUrl)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	err = http.ListenAndServe(conf.ServerListenAddr, mux)
+	err = http.ListenAndServe(conf.ServerListenAddr, router.Mux)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }

@@ -72,7 +72,8 @@ func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 	shortPath := chi.URLParam(r, "shortPath")
 	fullURL, err := router.service.GetFullURL(shortPath)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Println(err.Error())
+		http.Error(w, "Invalid URL in request", http.StatusBadRequest)
 		return
 	}
 

@@ -1,15 +1,16 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/url"
 
-	"github.com/apnaumov/url-shortener.git/internal/model"
+	"github.com/apnaumov/url-shortener.git/internal/repository"
 )
 
 type UrlShortenerService struct {
-	shortenerUrls *model.Storage[string]
+	shortenerUrls *repository.Storage[string]
 	urlBaseAddr   string
 }
 
@@ -24,14 +25,14 @@ func NewUrlShortenerService(urlBaseAddr string) (*UrlShortenerService, error) {
 
 	return &UrlShortenerService{
 		urlBaseAddr:   url.String(),
-		shortenerUrls: model.NewStorage[string](),
+		shortenerUrls: repository.NewStorage[string](),
 	}, nil
 }
 
 func (shortenerService *UrlShortenerService) GetFullURL(shortURL string) (string, error) {
-	v, ok := shortenerService.shortenerUrls.Get(shortURL)
-	if !ok {
-		return "", fmt.Errorf("can't find URL by the key %q", shortURL)
+	v, err := shortenerService.shortenerUrls.Get(shortURL)
+	if err != nil {
+		return "", fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
 	}
 	return v, nil
 }
@@ -39,22 +40,20 @@ func (shortenerService *UrlShortenerService) GetFullURL(shortURL string) (string
 func (shortenerService *UrlShortenerService) SetFullURL(fullURL string) (string, error) {
 	const maxAttemptsToGenerateKey = 10
 	var shortURL string
-	err := shortenerService.shortenerUrls.WorkWithContainer(func(container map[string]string) error {
-		for range maxAttemptsToGenerateKey {
-			shortURL = generateShortKey()
 
-			_, ok := container[shortURL]
-			// коллизий нет - сгенерированный shortURL подходит
-			if !ok {
-				container[shortURL] = fullURL
-				return nil
+	for range maxAttemptsToGenerateKey {
+		shortURL = generateShortKey()
+
+		err := shortenerService.shortenerUrls.Set(shortURL, fullURL)
+		if err != nil {
+			if errors.Is(err, repository.CollisionError) {
+				continue
+			} else {
+				return "", err
 			}
+		} else {
+			break
 		}
-		return fmt.Errorf("can't generate short URL. Given URL: %q", fullURL)
-	})
-
-	if err != nil {
-		return "", err
 	}
 
 	return url.JoinPath(shortenerService.urlBaseAddr, shortURL)

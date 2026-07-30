@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -188,6 +187,6 @@ func TestGetFullUrl(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, http.StatusBadRequest, getResp.StatusCode)
-		assert.Equal(t, fmt.Sprintf("can't find URL by the key %q\n", shortURL), string(getBuf))
+		assert.Equal(t, "Invalid URL in request\n", string(getBuf))
 	})
 }

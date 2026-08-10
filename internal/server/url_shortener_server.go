@@ -9,7 +9,7 @@ import (
 )
 
 func StartUrlShortenerServer() {
-	conf := config.InitConfigFromCLI()
+	conf := config.InitConfig()
 
 	router, err := handler.NewUrlShortenerRouter(conf.ServerBaseUrl)
 	if err != nil {

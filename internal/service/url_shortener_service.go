@@ -6,12 +6,15 @@ import (
 	"math/rand"
 	"net/url"
 
+	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
+	"go.uber.org/zap"
 )
 
 type UrlShortenerService struct {
 	shortenerUrls *repository.Storage[string]
 	urlBaseAddr   string
+	logger        *zap.Logger
 }
 
 func NewUrlShortenerService(urlBaseAddr string) (*UrlShortenerService, error) {
@@ -23,9 +26,12 @@ func NewUrlShortenerService(urlBaseAddr string) (*UrlShortenerService, error) {
 		url.Path = "/"
 	}
 
+	shortenerLogger, err := logger.InitializeRootLogger("shortener_service", "info")
+
 	return &UrlShortenerService{
 		urlBaseAddr:   url.String(),
 		shortenerUrls: repository.NewStorage[string](),
+		logger:        shortenerLogger,
 	}, nil
 }
 
@@ -47,6 +53,7 @@ func (shortenerService *UrlShortenerService) SetFullURL(fullURL string) (string,
 		err := shortenerService.shortenerUrls.Set(shortURL, fullURL)
 		if err != nil {
 			if errors.Is(err, repository.CollisionError) {
+				shortenerService.logger.Sugar().Debugf("Can't generate short key because of collision. Short key: %s", shortURL)
 				continue
 			} else {
 				return "", err

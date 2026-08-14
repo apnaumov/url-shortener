@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func SetUpServer(t *testing.T) *httptest.Server {
+func setUpServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	// получение URL и последующая настройка
 	ts := httptest.NewUnstartedServer(nil)
@@ -24,7 +24,7 @@ func SetUpServer(t *testing.T) *httptest.Server {
 }
 
 func TestRouterForMethodNotAllowed(t *testing.T) {
-	ts := SetUpServer(t)
+	ts := setUpServer(t)
 	ts.Start()
 	defer ts.Close()
 
@@ -43,7 +43,7 @@ func TestRouterForMethodNotAllowed(t *testing.T) {
 }
 
 func TestPostNewURL(t *testing.T) {
-	ts := SetUpServer(t)
+	ts := setUpServer(t)
 	ts.Start()
 	defer ts.Close()
 
@@ -135,7 +135,7 @@ func TestPostNewURL(t *testing.T) {
 }
 
 func TestGetFullUrl(t *testing.T) {
-	ts := SetUpServer(t)
+	ts := setUpServer(t)
 	ts.Start()
 	defer ts.Close()
 

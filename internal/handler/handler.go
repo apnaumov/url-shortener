@@ -37,6 +37,7 @@ func NewUrlShortenerRouter(urlBaseAddr string) (*UrlShortenerRouter, error) {
 	urlShortenerRouter.service = shortener
 
 	urlShortenerRouter.Mux.Use(urlShortenerRouter.getLoggerMiddleware)
+	urlShortenerRouter.Mux.Use(urlShortenerRouter.gzipMiddleware)
 	urlShortenerRouter.Mux.Post("/", urlShortenerRouter.postNewURL)
 	urlShortenerRouter.Mux.Get("/{shortPath}", urlShortenerRouter.getFullURL)
 	urlShortenerRouter.Mux.MethodNotAllowed(urlShortenerRouter.methodNotAllowed)

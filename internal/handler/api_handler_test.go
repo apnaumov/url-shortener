@@ -14,7 +14,7 @@ import (
 const postPrefix = "/api/shorten"
 
 func TestApiPostNewURL(t *testing.T) {
-	ts := SetUpServer(t)
+	ts := setUpServer(t)
 	ts.Start()
 	defer ts.Close()
 

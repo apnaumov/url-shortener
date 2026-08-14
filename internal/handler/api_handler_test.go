@@ -107,6 +107,7 @@ func TestApiPostNewURL(t *testing.T) {
 			request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, postPrefix}, ""), strings.NewReader(test.postMethod.body))
 			require.NoError(t, err)
 			request.Header.Set("Content-Type", test.postMethod.contentType)
+			request.Header.Set("Accept-Encoding", "")
 
 			resp, err := ts.Client().Do(request)
 			require.NoError(t, err)

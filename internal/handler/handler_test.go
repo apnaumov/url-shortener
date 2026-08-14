@@ -30,6 +30,7 @@ func TestRouterForMethodNotAllowed(t *testing.T) {
 
 	req, err := http.NewRequest(http.MethodPut, ts.URL+"/", strings.NewReader("Example body"))
 	require.NoError(t, err)
+	req.Header.Set("Accept-Encoding", "")
 
 	resp, err := ts.Client().Do(req)
 	require.NoError(t, err)
@@ -110,6 +111,7 @@ func TestPostNewURL(t *testing.T) {
 			request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, test.postMethod.prefix}, "/"), strings.NewReader(test.postMethod.body))
 			require.NoError(t, err)
 			request.Header.Set("Content-Type", test.postMethod.contentType)
+			request.Header.Set("Accept-Encoding", "")
 
 			resp, err := ts.Client().Do(request)
 			require.NoError(t, err)
@@ -178,6 +180,7 @@ func TestGetFullUrl(t *testing.T) {
 		require.NoError(t, err)
 		getRequest, err := http.NewRequest(http.MethodGet, reqURL, nil)
 		require.NoError(t, err)
+		getRequest.Header.Set("Accept-Encoding", "")
 
 		getResp, err := ts.Client().Do(getRequest)
 		require.NoError(t, err)

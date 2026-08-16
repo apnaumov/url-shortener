@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"maps"
 	"sync"
 )
 
@@ -44,4 +45,11 @@ func (store *Storage[T]) Set(key string, value T) error {
 	}
 
 	return CollisionError
+}
+
+func (store *Storage[T]) GetAll() map[string]T {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	return maps.Clone(store.container)
 }

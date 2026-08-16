@@ -16,7 +16,7 @@ func setUpServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	// получение URL и последующая настройка
 	ts := httptest.NewUnstartedServer(nil)
-	router, err := NewUrlShortenerRouter("http://" + ts.Listener.Addr().String())
+	router, err := NewUrlShortenerRouter("http://"+ts.Listener.Addr().String(), "")
 	require.NoError(t, err)
 	ts.Config.Handler = router.Mux
 

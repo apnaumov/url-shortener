@@ -27,9 +27,6 @@ func NewUrlShortenerService(urlBaseAddr string, fileStoragePath string) (*UrlSho
 	if err != nil {
 		return nil, err
 	}
-	if url.Path == "" {
-		url.Path = "/"
-	}
 
 	shortenerLogger, err := logger.InitializeRootLogger("shortener_service", "info")
 
@@ -106,7 +103,7 @@ func (shortenerService *UrlShortenerService) loadFromFile() error {
 }
 
 func (shortenerService *UrlShortenerService) SaveToFile() error {
-	file, err := os.OpenFile(shortenerService.fileStoragePath, os.O_WRONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(shortenerService.fileStoragePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return err
 	}

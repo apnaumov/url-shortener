@@ -20,11 +20,15 @@ func newCompressWriter(w http.ResponseWriter) *compressWriter {
 }
 
 func (c *compressWriter) Write(p []byte) (int, error) {
-	return c.zw.Write(p)
+	if c.Header().Get("Content-Encoding") == "gzip" {
+		return c.zw.Write(p)
+	} else {
+		return c.ResponseWriter.Write(p)
+	}
 }
 
 func (c *compressWriter) WriteHeader(statusCode int) {
-	if statusCode < 300 {
+	if statusCode < 300 && c.shouldCompress(c.Header().Get("Content-Type")) {
 		c.Header().Set("Content-Encoding", "gzip")
 	}
 	c.ResponseWriter.WriteHeader(statusCode)
@@ -32,6 +36,20 @@ func (c *compressWriter) WriteHeader(statusCode int) {
 
 func (c *compressWriter) Close() error {
 	return c.zw.Close()
+}
+
+func (cw *compressWriter) shouldCompress(contentType string) bool {
+	compressibleTypes := []string{
+		"application/json",
+		"text/plain",
+	}
+
+	for _, t := range compressibleTypes {
+		if strings.HasPrefix(contentType, t) {
+			return true
+		}
+	}
+	return false
 }
 
 type compressReader struct {
@@ -51,7 +69,7 @@ func newCompressReader(r io.ReadCloser) (*compressReader, error) {
 	}, nil
 }
 
-func (c compressReader) Read(p []byte) (n int, err error) {
+func (c *compressReader) Read(p []byte) (n int, err error) {
 	return c.zr.Read(p)
 }
 
@@ -88,5 +106,6 @@ func (router *UrlShortenerRouter) gzipMiddleware(h http.Handler) http.Handler {
 		}
 
 		h.ServeHTTP(ow, r)
+
 	})
 }

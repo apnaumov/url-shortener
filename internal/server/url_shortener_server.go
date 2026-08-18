@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,10 +17,17 @@ import (
 )
 
 func StartUrlShortenerServer() {
-	logger, err := logger.InitializeRootLogger("server", "info")
-	zap.RedirectStdLog(logger)
-
 	conf := config.InitConfig()
+	err := logger.SetLogDirectory(conf.LogDirectory)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	logger, err := logger.InitializeRootLogger("server", "info")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	zap.RedirectStdLog(logger)
 
 	router, err := handler.NewUrlShortenerRouter(conf.ServerBaseUrl, conf.FileStoragePath)
 	if err != nil {

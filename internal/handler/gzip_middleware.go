@@ -4,23 +4,26 @@ import (
 	"compress/gzip"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 )
 
 type compressWriter struct {
 	http.ResponseWriter
-	zw *gzip.Writer
+	zw             *gzip.Writer
+	needToCompress bool
 }
 
 func newCompressWriter(w http.ResponseWriter) *compressWriter {
 	return &compressWriter{
 		ResponseWriter: w,
 		zw:             gzip.NewWriter(w),
+		needToCompress: false,
 	}
 }
 
 func (c *compressWriter) Write(p []byte) (int, error) {
-	if c.Header().Get("Content-Encoding") == "gzip" {
+	if c.needToCompress {
 		return c.zw.Write(p)
 	} else {
 		return c.ResponseWriter.Write(p)
@@ -30,12 +33,16 @@ func (c *compressWriter) Write(p []byte) (int, error) {
 func (c *compressWriter) WriteHeader(statusCode int) {
 	if statusCode < 300 && c.shouldCompress(c.Header().Get("Content-Type")) {
 		c.Header().Set("Content-Encoding", "gzip")
+		c.needToCompress = true
 	}
 	c.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (c *compressWriter) Close() error {
-	return c.zw.Close()
+	if c.needToCompress {
+		return c.zw.Close()
+	}
+	return nil
 }
 
 func (cw *compressWriter) shouldCompress(contentType string) bool {
@@ -44,12 +51,7 @@ func (cw *compressWriter) shouldCompress(contentType string) bool {
 		"text/html",
 	}
 
-	for _, t := range compressibleTypes {
-		if strings.HasPrefix(contentType, t) {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(compressibleTypes, contentType)
 }
 
 type compressReader struct {
@@ -74,10 +76,10 @@ func (c *compressReader) Read(p []byte) (n int, err error) {
 }
 
 func (c *compressReader) Close() error {
-	if err := c.r.Close(); err != nil {
+	if err := c.zr.Close(); err != nil {
 		return err
 	}
-	return c.zr.Close()
+	return c.r.Close()
 }
 
 func (router *UrlShortenerRouter) gzipMiddleware(h http.Handler) http.Handler {

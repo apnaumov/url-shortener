@@ -151,6 +151,7 @@ func TestGetFullUrl(t *testing.T) {
 		postRequest, err := http.NewRequest(http.MethodPost, ts.URL+"/", strings.NewReader(body))
 		require.NoError(t, err)
 		postRequest.Header.Set("Content-Type", "text/plain")
+		postRequest.Header.Set("Accept-Encoding", "")
 
 		postResp, err := ts.Client().Do(postRequest)
 		require.NoError(t, err)

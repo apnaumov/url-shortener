@@ -2,27 +2,33 @@ package handler
 
 import (
 	"io"
-	"log"
 	"net/http"
 
+	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/service"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 type UrlShortenerRouter struct {
-	Mux     *chi.Mux
-	service *service.UrlShortenerService
+	Mux           *chi.Mux
+	service       *service.UrlShortenerService
+	requestLogger *zap.Logger
 }
 
-func NewUrlShortenerRouter(urlBaseAddr string) (*UrlShortenerRouter, error) {
+func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShortenerRouter, error) {
 	urlShortenerRouter := &UrlShortenerRouter{}
 	urlShortenerRouter.Mux = chi.NewRouter()
 
-	urlShortenerRouter.Mux.Post("/", urlShortenerRouter.postNewURL)
-	urlShortenerRouter.Mux.Get("/{shortPath}", urlShortenerRouter.getFullURL)
-	urlShortenerRouter.Mux.MethodNotAllowed(urlShortenerRouter.methodNotAllowed)
+	requestLogger, err := logger.InitializeRootLogger("server_requests", "info")
 
-	shortener, err := service.NewUrlShortenerService(urlBaseAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	urlShortenerRouter.requestLogger = requestLogger
+
+	shortener, err := service.NewUrlShortenerService(urlBaseAddr, fileStoragePath)
 
 	if err != nil {
 		return nil, err
@@ -30,7 +36,22 @@ func NewUrlShortenerRouter(urlBaseAddr string) (*UrlShortenerRouter, error) {
 
 	urlShortenerRouter.service = shortener
 
+	urlShortenerRouter.Mux.Use(urlShortenerRouter.getLoggerMiddleware)
+	urlShortenerRouter.Mux.Use(urlShortenerRouter.gzipMiddleware)
+	urlShortenerRouter.Mux.Post("/", urlShortenerRouter.postNewURL)
+	urlShortenerRouter.Mux.Get("/{shortPath}", urlShortenerRouter.getFullURL)
+	urlShortenerRouter.Mux.MethodNotAllowed(urlShortenerRouter.methodNotAllowed)
+	urlShortenerRouter.setApiHandlers()
+
 	return urlShortenerRouter, nil
+}
+
+func (router *UrlShortenerRouter) OnShutdown() {
+	if err := router.service.SaveToFile(); err != nil {
+		router.requestLogger.Warn("Error while save service's configuration on shutdown", zap.String("error", err.Error()))
+	} else {
+		router.requestLogger.Info("Service's configuration saved on shutdown")
+	}
 }
 
 func (router *UrlShortenerRouter) methodNotAllowed(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +66,7 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Println(err.Error())
+		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -57,7 +78,7 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 
 	fullURL, err := router.service.SetFullURL(string(body))
 	if err != nil {
-		log.Println(err.Error())
+		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -72,7 +93,7 @@ func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 	shortPath := chi.URLParam(r, "shortPath")
 	fullURL, err := router.service.GetFullURL(shortPath)
 	if err != nil {
-		log.Println(err.Error())
+		router.requestLogger.Error(err.Error())
 		http.Error(w, "Invalid URL in request", http.StatusBadRequest)
 		return
 	}

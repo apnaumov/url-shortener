@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var logDirectory string = "."
@@ -30,6 +31,7 @@ func InitializeRootLogger(loggerName string, level string) (*zap.Logger, error) 
 	cfg.OutputPaths = []string{
 		filepath.Join(logDirectory, fmt.Sprintf("%s.log", loggerName)),
 	}
+	cfg.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
 	zl, err := cfg.Build()
 	if err != nil {
 		return nil, err

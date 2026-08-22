@@ -13,6 +13,7 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/handler"
 	"github.com/apnaumov/url-shortener.git/internal/logger"
+	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"go.uber.org/zap"
 )
 
@@ -38,6 +39,12 @@ func StartUrlShortenerServer() {
 		Addr:    conf.ServerListenAddr,
 		Handler: router.Mux,
 	}
+
+	err = repository.InitFromConnectionString(conf.DbConnectionString)
+	if err != nil {
+		logger.Fatal(err.Error())
+	}
+	defer repository.DB.Close()
 
 	go func() {
 		logger.Info("Starting server", zap.String("address", conf.ServerListenAddr))

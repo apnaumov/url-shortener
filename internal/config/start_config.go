@@ -6,10 +6,11 @@ import (
 )
 
 type Config struct {
-	ServerListenAddr string
-	ServerBaseUrl    string
-	FileStoragePath  string
-	LogDirectory     string
+	ServerListenAddr   string
+	ServerBaseUrl      string
+	FileStoragePath    string
+	LogDirectory       string
+	DbConnectionString string
 }
 
 func InitConfig() Config {
@@ -26,11 +27,13 @@ func setConfigFromArgs(config *Config) {
 	const defaultUrl = "http://localhost:8080"
 	const defaultFileStoragePath = "url_storage.storage"
 	const defaultLogDirectory = "."
+	const defaultDbConnection = ""
 
 	flag.StringVar(&config.ServerListenAddr, "a", defaultListen, `Address to run server. Default: ":8080"`)
 	flag.StringVar(&config.ServerBaseUrl, "b", defaultUrl, `Base address of the resulting shortened URL. Default: "http://localhost:8080"`)
 	flag.StringVar(&config.FileStoragePath, "f", defaultFileStoragePath, `File path to storage file. Default: "$(pwd)/url_storage.storage"`)
 	flag.StringVar(&config.LogDirectory, "l", defaultLogDirectory, `Log directory. Default: "$(pwd)"`)
+	flag.StringVar(&config.DbConnectionString, "d", defaultDbConnection, `Database connection string. Default: ""`)
 	flag.Parse()
 }
 
@@ -49,5 +52,9 @@ func setConfigFromEnv(config *Config) {
 
 	if logDirectory, found := os.LookupEnv("LOG_LOCATION_PATH"); found {
 		config.LogDirectory = logDirectory
+	}
+
+	if dbConnectionString, found := os.LookupEnv("DATABASE_DSN"); found {
+		config.DbConnectionString = dbConnectionString
 	}
 }

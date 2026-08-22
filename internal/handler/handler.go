@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"context"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/apnaumov/url-shortener.git/internal/logger"
+	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/apnaumov/url-shortener.git/internal/service"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -40,6 +43,7 @@ func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShor
 	urlShortenerRouter.Mux.Use(urlShortenerRouter.gzipMiddleware)
 	urlShortenerRouter.Mux.Post("/", urlShortenerRouter.postNewURL)
 	urlShortenerRouter.Mux.Get("/{shortPath}", urlShortenerRouter.getFullURL)
+	urlShortenerRouter.Mux.Get("/ping", urlShortenerRouter.pingDb)
 	urlShortenerRouter.Mux.MethodNotAllowed(urlShortenerRouter.methodNotAllowed)
 	urlShortenerRouter.setApiHandlers()
 
@@ -100,4 +104,19 @@ func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 
 	w.Header().Set("Location", fullURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func (router *UrlShortenerRouter) pingDb(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	err := repository.DB.PingContext(ctx)
+
+	if err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

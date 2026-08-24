@@ -41,7 +41,7 @@ func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fullURL, err := router.service.SetFullURL(postURL.URL)
+	fullURL, err := router.service.SetFullURL(r.Context(), postURL.URL)
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

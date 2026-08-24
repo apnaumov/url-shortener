@@ -30,7 +30,24 @@ func StartUrlShortenerServer() {
 	}
 	zap.RedirectStdLog(logger)
 
-	router, err := handler.NewUrlShortenerRouter(conf.ServerBaseUrl, conf.FileStoragePath)
+	var storage repository.UrlStorage
+	if len(conf.DbConnectionString) != 0 {
+		st, err := repository.NewDbStorage(conf.DbConnectionString)
+		logger.Info("Db storage initialized")
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		storage = st
+	} else {
+		st, err := repository.NewRuntimeStorage(conf.FileStoragePath)
+		logger.Info("Runtime storage initialized")
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		storage = st
+	}
+
+	router, err := handler.NewUrlShortenerRouter(conf.ServerBaseUrl, storage)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
@@ -39,12 +56,6 @@ func StartUrlShortenerServer() {
 		Addr:    conf.ServerListenAddr,
 		Handler: router.Mux,
 	}
-
-	err = repository.InitFromConnectionString(conf.DbConnectionString)
-	if err != nil {
-		logger.Fatal(err.Error())
-	}
-	defer repository.DB.Close()
 
 	go func() {
 		logger.Info("Starting server", zap.String("address", conf.ServerListenAddr))

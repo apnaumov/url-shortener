@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -19,7 +20,7 @@ type UrlShortenerRouter struct {
 	requestLogger *zap.Logger
 }
 
-func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShortenerRouter, error) {
+func NewUrlShortenerRouter(urlBaseAddr string, urlStorage repository.UrlStorage) (*UrlShortenerRouter, error) {
 	urlShortenerRouter := &UrlShortenerRouter{}
 	urlShortenerRouter.Mux = chi.NewRouter()
 
@@ -31,7 +32,7 @@ func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShor
 
 	urlShortenerRouter.requestLogger = requestLogger
 
-	shortener, err := service.NewUrlShortenerService(urlBaseAddr, fileStoragePath)
+	shortener, err := service.NewUrlShortenerService(urlBaseAddr, urlStorage)
 
 	if err != nil {
 		return nil, err
@@ -51,7 +52,7 @@ func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShor
 }
 
 func (router *UrlShortenerRouter) OnShutdown() {
-	if err := router.service.SaveToFile(); err != nil {
+	if err := router.service.OnServerShutdown(); err != nil {
 		router.requestLogger.Warn("Error while save service's configuration on shutdown", zap.String("error", err.Error()))
 	} else {
 		router.requestLogger.Info("Service's configuration saved on shutdown")
@@ -80,7 +81,7 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fullURL, err := router.service.SetFullURL(string(body))
+	fullURL, err := router.service.SetFullURL(r.Context(), string(body))
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -95,7 +96,7 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 
 func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
 	shortPath := chi.URLParam(r, "shortPath")
-	fullURL, err := router.service.GetFullURL(shortPath)
+	fullURL, err := router.service.GetFullURL(r.Context(), shortPath)
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, "Invalid URL in request", http.StatusBadRequest)
@@ -110,7 +111,12 @@ func (router *UrlShortenerRouter) pingDb(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	err := repository.DB.PingContext(ctx)
+	var err error
+	if storage, isDbType := router.service.GetStorage().(*repository.DbStorage); isDbType {
+		err = storage.GetNativeDb().PingContext(ctx)
+	} else {
+		err = errors.New("storage not an DbStorage type")
+	}
 
 	if err != nil {
 		router.requestLogger.Error(err.Error())

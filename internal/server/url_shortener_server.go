@@ -31,6 +31,7 @@ func StartUrlShortenerServer() {
 	zap.RedirectStdLog(logger)
 
 	var storage repository.UrlStorage
+	logger.Info("Try to initialize storage")
 	if len(conf.DbConnectionString) != 0 {
 		st, err := repository.NewDbStorage(conf.DbConnectionString)
 		if err != nil {

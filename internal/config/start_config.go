@@ -26,13 +26,13 @@ func setConfigFromArgs(config *Config) {
 	const defaultListen = ":8080"
 	const defaultUrl = "http://localhost:8080"
 	const defaultFileStoragePath = "url_storage.storage"
-	const defaultLogDirectory = "."
+	const defaultLogDirectory = ""
 	const defaultDbConnection = ""
 
 	flag.StringVar(&config.ServerListenAddr, "a", defaultListen, `Address to run server. Default: ":8080"`)
 	flag.StringVar(&config.ServerBaseUrl, "b", defaultUrl, `Base address of the resulting shortened URL. Default: "http://localhost:8080"`)
 	flag.StringVar(&config.FileStoragePath, "f", defaultFileStoragePath, `File path to storage file. Default: "$(pwd)/url_storage.storage"`)
-	flag.StringVar(&config.LogDirectory, "l", defaultLogDirectory, `Log directory. Default: "$(pwd)"`)
+	flag.StringVar(&config.LogDirectory, "l", defaultLogDirectory, `Log directory. Default puts messages to stdout`)
 	flag.StringVar(&config.DbConnectionString, "d", defaultDbConnection, `Database connection string. Default: ""`)
 	flag.Parse()
 }

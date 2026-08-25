@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/apnaumov/url-shortener.git/internal/logger"
+	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/apnaumov/url-shortener.git/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -81,7 +82,11 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fullURL, err := router.service.SetFullURL(r.Context(), string(body))
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	responceData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body)})
+
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -91,19 +96,19 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 
-	w.Write([]byte(fullURL))
+	w.Write([]byte(responceData.ShortUrl))
 }
 
 func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
 	shortPath := chi.URLParam(r, "shortPath")
-	fullURL, err := router.service.GetFullURL(r.Context(), shortPath)
+	urlData, err := router.service.GetFullURL(r.Context(), shortPath)
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, "Invalid URL in request", http.StatusBadRequest)
 		return
 	}
 
-	w.Header().Set("Location", fullURL)
+	w.Header().Set("Location", urlData.OriginalURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 

@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const postPrefix = "/api/shorten"
-
 func TestApiPostNewURL(t *testing.T) {
+	const postPrefix = "/api/shorten"
+
 	ts := setUpServer(t)
 	ts.Start()
 	defer ts.Close()

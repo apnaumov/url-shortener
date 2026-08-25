@@ -20,24 +20,25 @@ import (
 )
 
 type UrlStorage interface {
-	GetFullUrl(ctx context.Context, shortUrl string) (string, error)
-	SetUrl(ctx context.Context, shortUrl string, fullUrl string) error
+	GetFullUrl(ctx context.Context, shortUrl string) (model.RequestURLData, error)
+	SetUrl(ctx context.Context, urlRecord model.URLRecord) error
 	OnServerShutdown() error
 }
 
 var (
-	NotFoundError  = errors.New("doesn't have in storage")
-	CollisionError = errors.New("storage already have this key")
+	NotFoundError    = errors.New("doesn't have in storage")
+	CollisionError   = errors.New("storage already have this short_url")
+	CorrelationError = errors.New("storage already have this correlation_id")
 )
 
 type RuntimeStorage struct {
-	container       *Container[string]
+	container       *Container[model.RequestURLData]
 	fileStoragePath string
 }
 
 func NewRuntimeStorage(fileStoragePath string) (*RuntimeStorage, error) {
 	storage := &RuntimeStorage{
-		container:       NewContainer[string](),
+		container:       NewContainer[model.RequestURLData](),
 		fileStoragePath: fileStoragePath,
 	}
 
@@ -51,20 +52,30 @@ func NewRuntimeStorage(fileStoragePath string) (*RuntimeStorage, error) {
 	return storage, nil
 }
 
-func (storage *RuntimeStorage) GetFullUrl(ctx context.Context, shortUrl string) (string, error) {
+func (storage *RuntimeStorage) GetFullUrl(ctx context.Context, shortUrl string) (model.RequestURLData, error) {
 	if ctx.Err() != nil {
-		return "", ctx.Err()
+		return model.RequestURLData{}, ctx.Err()
 	}
 
 	return storage.container.Get(shortUrl)
 }
 
-func (storage *RuntimeStorage) SetUrl(ctx context.Context, shortUrl string, fullUrl string) error {
+func (storage *RuntimeStorage) SetUrl(ctx context.Context, urlRecord model.URLRecord) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 
-	return storage.container.Set(shortUrl, fullUrl)
+	if len(urlRecord.UrlData.CorrelationId) != 0 {
+		storageContainer := storage.container.GetAll()
+
+		for _, v := range storageContainer {
+			if v.CorrelationId == urlRecord.UrlData.CorrelationId {
+				return CorrelationError
+			}
+		}
+	}
+
+	return storage.container.Set(urlRecord.ShortURL, urlRecord.UrlData)
 }
 
 func (storage *RuntimeStorage) OnServerShutdown() error {
@@ -81,7 +92,7 @@ func (storage *RuntimeStorage) loadFromFile() error {
 	jsonDecoder := json.NewDecoder(file)
 
 	for {
-		record := model.URLFileRecord{}
+		record := model.URLRecord{}
 		err := jsonDecoder.Decode(&record)
 		if err == io.EOF {
 			break
@@ -90,7 +101,7 @@ func (storage *RuntimeStorage) loadFromFile() error {
 			return err
 		}
 
-		if err := storage.container.Set(record.ShortURL, record.OriginalURL); err != nil {
+		if err := storage.container.Set(record.ShortURL, record.UrlData); err != nil {
 			return err
 		}
 	}
@@ -109,7 +120,7 @@ func (storage *RuntimeStorage) saveToFile() error {
 	jsonEncoder := json.NewEncoder(file)
 
 	for k, v := range storageContainer {
-		if err := jsonEncoder.Encode(model.URLFileRecord{ShortURL: k, OriginalURL: v}); err != nil {
+		if err := jsonEncoder.Encode(model.URLRecord{ShortURL: k, UrlData: v}); err != nil {
 			return err
 		}
 	}
@@ -143,20 +154,28 @@ func (storage *DbStorage) GetNativeDb() *sql.DB {
 	return storage.db
 }
 
-func (storage *DbStorage) GetFullUrl(ctx context.Context, shortUrl string) (string, error) {
-	var fullUrl string
+func (storage *DbStorage) GetFullUrl(ctx context.Context, shortUrl string) (model.RequestURLData, error) {
 	row := storage.db.QueryRowContext(ctx, getFullUrlQuery, shortUrl)
 
-	err := row.Scan(&fullUrl)
+	var (
+		fullUrl       string
+		correlationId sql.NullString
+	)
 
+	err := row.Scan(&fullUrl, &correlationId)
 	if err != nil {
-		return "", err
+		return model.RequestURLData{}, err
 	}
 
-	return fullUrl, nil
+	urlData := model.RequestURLData{OriginalURL: fullUrl}
+	if correlationId.Valid {
+		urlData.CorrelationId = correlationId.String
+	}
+
+	return urlData, nil
 }
 
-func (storage *DbStorage) SetUrl(ctx context.Context, shortUrl string, fullUrl string) error {
+func (storage *DbStorage) SetUrl(ctx context.Context, urlRecord model.URLRecord) error {
 	tx, err := storage.db.Begin()
 	if err != nil {
 		return err
@@ -164,20 +183,29 @@ func (storage *DbStorage) SetUrl(ctx context.Context, shortUrl string, fullUrl s
 
 	defer tx.Rollback()
 
-	isExist := false
-	row := tx.QueryRowContext(ctx, checkShortUrlIsExistQuery, shortUrl)
-
-	err = row.Scan(&isExist)
-
+	isCollision := false
+	row := tx.QueryRowContext(ctx, checkCollisionUrl, urlRecord.ShortURL)
+	err = row.Scan(&isCollision)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-
-	if isExist {
+	if isCollision {
 		return CollisionError
 	}
 
-	_, err = tx.ExecContext(ctx, setFullUrlQuery, shortUrl, fullUrl)
+	if len(urlRecord.UrlData.CorrelationId) != 0 {
+		isCorrelation := false
+		row = tx.QueryRowContext(ctx, checkCorrelation, urlRecord.UrlData.CorrelationId)
+		err = row.Scan(&isCorrelation)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if isCorrelation {
+			return CorrelationError
+		}
+	}
+
+	_, err = tx.ExecContext(ctx, setFullUrlQuery, urlRecord.ShortURL, urlRecord.UrlData.OriginalURL, urlRecord.UrlData.CorrelationId)
 	if err != nil {
 		return err
 	}

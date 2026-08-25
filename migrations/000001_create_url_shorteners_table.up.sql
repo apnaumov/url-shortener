@@ -1,8 +1,8 @@
 CREATE TABLE shortener_urls (
 	internal_id SERIAL NOT NULL PRIMARY KEY,
-	shortUrl TEXT NOT NULL,
-	fullUrl TEXT NOT NULL
+	short_url TEXT NOT NULL,
+	full_url TEXT NOT NULL
 );
 
 -- Базовый индекс для поиска по короткому URL
-CREATE INDEX idx_short_url ON shortener_urls(shortUrl);
+CREATE INDEX idx_short_url ON shortener_urls(short_url);

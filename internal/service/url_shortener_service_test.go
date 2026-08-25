@@ -25,20 +25,20 @@ func TestRuntimeUsage(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	fullURL, err := serv.GetFullURL(ctx, "asd")
-	assert.Empty(t, fullURL)
+	urlData, err := serv.GetFullURL(ctx, "asd")
+	assert.Empty(t, urlData.OriginalURL)
 	assert.ErrorIs(t, err, repository.NotFoundError)
 
-	shortURL, err := serv.SetFullURL(ctx, "asd")
+	responseData, err := serv.SetFullURL(ctx, model.RequestURLData{OriginalURL: "asd"})
 	require.NoError(t, err)
-	require.NotEmpty(t, shortURL)
+	require.NotEmpty(t, responseData.ShortUrl)
 
-	url, err := url.Parse(shortURL)
+	url, err := url.Parse(responseData.ShortUrl)
 	require.NoError(t, err)
 
-	fullURL, err = serv.GetFullURL(ctx, strings.ReplaceAll(url.Path, "/", ""))
+	urlData, err = serv.GetFullURL(ctx, strings.ReplaceAll(url.Path, "/", ""))
 	assert.NoError(t, err)
-	assert.Equal(t, "asd", fullURL)
+	assert.Equal(t, "asd", urlData.OriginalURL)
 }
 
 func TestUsageWithFileData(t *testing.T) {
@@ -47,9 +47,9 @@ func TestUsageWithFileData(t *testing.T) {
 
 	const serverBaseUrl = "http://localhost:8080"
 
-	testData := []model.URLFileRecord{
-		{ShortURL: "jhwGRw", OriginalURL: "asdasdasddsa"},
-		{ShortURL: "tk7Zla", OriginalURL: "daberq"},
+	testData := []model.URLRecord{
+		{ShortURL: "jhwGRw", UrlData: model.RequestURLData{OriginalURL: "asdasdasddsa"}},
+		{ShortURL: "tk7Zla", UrlData: model.RequestURLData{OriginalURL: "daberq"}},
 	}
 
 	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
@@ -75,6 +75,6 @@ func TestUsageWithFileData(t *testing.T) {
 	for _, v := range testData {
 		fullUrl, err := serv.GetFullURL(ctx, v.ShortURL)
 		assert.NoError(t, err)
-		assert.Equal(t, v.OriginalURL, fullUrl)
+		assert.Equal(t, v.UrlData, fullUrl)
 	}
 }

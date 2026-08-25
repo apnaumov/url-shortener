@@ -22,6 +22,8 @@ func TestGzipCompression(t *testing.T) {
 	successBodyRegExp := `^\{.*"result":\s*".*".*\}`
 	contentType := "application/json"
 
+	const postPrefix = "/api/shorten"
+
 	t.Run("sends_gzip", func(t *testing.T) {
 		buf := bytes.NewBuffer(nil)
 		zb := gzip.NewWriter(buf)

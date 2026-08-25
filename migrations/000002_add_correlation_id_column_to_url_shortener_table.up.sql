@@ -1,0 +1,1 @@
+ALTER TABLE shortener_urls ADD COLUMN correlation_id TEXT;

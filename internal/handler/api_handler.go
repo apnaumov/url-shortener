@@ -93,6 +93,11 @@ func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http
 	responceDataBatch := make([]model.ResponceURLData, 0, len(requestDataBatch))
 
 	for i := range requestDataBatch {
+		if len(requestDataBatch[i].CorrelationId) == 0 || len(requestDataBatch[i].OriginalURL) == 0 {
+			http.Error(w, "URL data must be not empty", http.StatusBadRequest)
+			return
+		}
+
 		responceData, err := router.service.SetFullURL(ctx, requestDataBatch[i])
 
 		if err != nil {

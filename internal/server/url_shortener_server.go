@@ -33,17 +33,17 @@ func StartUrlShortenerServer() {
 	var storage repository.UrlStorage
 	if len(conf.DbConnectionString) != 0 {
 		st, err := repository.NewDbStorage(conf.DbConnectionString)
-		logger.Info("Db storage initialized")
 		if err != nil {
 			log.Fatal(err.Error())
 		}
+		logger.Info("Db storage initialized")
 		storage = st
 	} else {
 		st, err := repository.NewRuntimeStorage(conf.FileStoragePath)
-		logger.Info("Runtime storage initialized")
 		if err != nil {
 			log.Fatal(err.Error())
 		}
+		logger.Info("Runtime storage initialized")
 		storage = st
 	}
 

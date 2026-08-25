@@ -13,7 +13,7 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/model"
 
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
 	urlshortener "github.com/apnaumov/url-shortener.git"
@@ -122,12 +122,12 @@ type DbStorage struct {
 }
 
 func NewDbStorage(connStr string) (*DbStorage, error) {
-	db, err := sql.Open("pgx", connStr)
+	err := runMigrations(connStr)
 	if err != nil {
 		return nil, err
 	}
 
-	err = runMigrations(db)
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,11 @@ func (storage *DbStorage) OnServerShutdown() error {
 	return storage.db.Close()
 }
 
-func runMigrations(db *sql.DB) error {
+func runMigrations(connStr string) error {
+	db, err := sql.Open("pgx", connStr)
+	if err != nil {
+		return err
+	}
 	// 1. Создаём source из встроенной ФС
 	source, err := iofs.New(urlshortener.MigrationsFS, "migrations")
 	if err != nil {
@@ -197,13 +201,13 @@ func runMigrations(db *sql.DB) error {
 	}
 
 	// 2. Создаём database-драйвер из *sql.DB
-	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
+	dbDriver, err := pgx.WithInstance(db, &pgx.Config{})
 	if err != nil {
 		return err
 	}
 
 	// 3. Собираем мигратор
-	m, err := migrate.NewWithInstance("iofs", source, "postgres", dbDriver)
+	m, err := migrate.NewWithInstance("iofs", source, "pgx", dbDriver)
 	if err != nil {
 		return err
 	}

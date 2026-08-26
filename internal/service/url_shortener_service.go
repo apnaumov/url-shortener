@@ -68,7 +68,7 @@ func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, url
 		if err != nil {
 			var targetErr *repository.FullUrlCollisionError
 			if errors.As(err, &targetErr) {
-				resShortUrl, err := url.JoinPath(shortenerService.urlBaseAddr, shortURL)
+				resShortUrl, err := url.JoinPath(shortenerService.urlBaseAddr, targetErr.ShortUrl)
 				if err != nil {
 					return model.ResponceURLData{}, err
 				}
@@ -81,9 +81,8 @@ func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, url
 				continue
 			}
 			return model.ResponceURLData{}, err
-		} else {
-			break
 		}
+		break
 	}
 
 	resShortUrl, err := url.JoinPath(shortenerService.urlBaseAddr, shortURL)

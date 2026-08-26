@@ -1,1 +1,1 @@
-ALTER TABLE shortener_urls ADD COLUMN correlation_id TEXT;
+ALTER TABLE shortener_urls ADD COLUMN IF NOT EXISTS correlation_id TEXT;

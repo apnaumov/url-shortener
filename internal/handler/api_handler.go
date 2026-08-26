@@ -51,16 +51,30 @@ func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Requ
 	defer cancel()
 
 	responceData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: postURL.URL})
+
+	var status int
+	var res model.ResultShortenURL
+
 	if err != nil {
-		router.requestLogger.Error(err.Error())
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+		var targetErr *repository.FullUrlCollisionError
+		if errors.As(err, &targetErr) {
+			router.requestLogger.Warn(targetErr.Error())
+			status = http.StatusConflict
+			res = model.ResultShortenURL{Result: targetErr.ShortUrl}
+		} else {
+			router.requestLogger.Error(err.Error())
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		status = http.StatusCreated
+		res = model.ResultShortenURL{Result: responceData.ShortUrl}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 
-	if err := json.NewEncoder(w).Encode(model.ResultShortenURL{Result: responceData.ShortUrl}); err != nil {
+	if err := json.NewEncoder(w).Encode(res); err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -102,8 +116,9 @@ func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http
 
 		if err != nil {
 			var status int
-			if errors.Is(err, repository.CorrelationError) {
-				router.requestLogger.Warn(err.Error())
+			var targetErr *repository.FullUrlCollisionError
+			if errors.As(err, &targetErr) {
+				router.requestLogger.Warn(targetErr.Error())
 				status = http.StatusConflict
 			} else {
 				router.requestLogger.Error(err.Error())

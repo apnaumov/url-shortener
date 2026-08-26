@@ -88,8 +88,18 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	responceData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body)})
 
 	if err != nil {
-		router.requestLogger.Error(err.Error())
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		var targetErr *repository.FullUrlCollisionError
+		if errors.As(err, &targetErr) {
+			router.requestLogger.Warn(targetErr.Error())
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusConflict)
+
+			w.Write([]byte(targetErr.ShortUrl))
+		} else {
+			router.requestLogger.Error(err.Error())
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+
 		return
 	}
 
@@ -103,8 +113,14 @@ func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 	shortPath := chi.URLParam(r, "shortPath")
 	urlData, err := router.service.GetFullURL(r.Context(), shortPath)
 	if err != nil {
-		router.requestLogger.Error(err.Error())
-		http.Error(w, "Invalid URL in request", http.StatusBadRequest)
+		if errors.Is(err, repository.NotFoundError) {
+			router.requestLogger.Warn(err.Error())
+			http.Error(w, "Invalid URL in request", http.StatusBadRequest)
+		} else {
+			router.requestLogger.Error(err.Error())
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+
 		return
 	}
 

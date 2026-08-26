@@ -198,3 +198,35 @@ func TestGetFullUrl(t *testing.T) {
 		assert.Equal(t, "Invalid URL in request\n", string(getBuf))
 	})
 }
+
+func TestPostConflictFullUrl(t *testing.T) {
+	ts := setUpServer(t)
+	ts.Start()
+	defer ts.Close()
+
+	body := "https://abc.net"
+
+	request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, "/"}, ""), strings.NewReader(body))
+	require.NoError(t, err)
+	request.Header.Set("Content-Type", "text/plain")
+	request.Header.Set("Accept-Encoding", "")
+
+	resp, err := ts.Client().Do(request)
+	require.NoError(t, err)
+
+	// проверяем код ответа
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	defer resp.Body.Close()
+
+	repeatReq, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, "/"}, ""), strings.NewReader(body))
+	require.NoError(t, err)
+	repeatReq.Header.Set("Content-Type", "text/plain")
+	repeatReq.Header.Set("Accept-Encoding", "")
+
+	repeatResp, err := ts.Client().Do(repeatReq)
+	require.NoError(t, err)
+
+	// проверяем код ответа
+	assert.Equal(t, http.StatusConflict, repeatResp.StatusCode)
+	defer repeatResp.Body.Close()
+}

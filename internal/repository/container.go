@@ -16,29 +16,26 @@ func NewContainer[T any]() *Container[T] {
 	}
 }
 
-func (store *Container[T]) Get(key string) (T, error) {
+func (store *Container[T]) Get(key string) (T, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
 	elem, ok := store.container[key]
 
-	if !ok {
-		return elem, NotFoundError
-	}
-	return elem, nil
+	return elem, ok
 }
 
-func (store *Container[T]) Set(key string, value T) error {
+func (store *Container[T]) Set(key string, value T) bool {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
 	_, ok := store.container[key]
 	if !ok {
 		store.container[key] = value
-		return nil
+		return true
 	}
 
-	return CollisionError
+	return false
 }
 
 func (store *Container[T]) GetAll() map[string]T {

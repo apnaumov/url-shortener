@@ -47,7 +47,10 @@ func (shortenerService *UrlShortenerService) OnServerShutdown() error {
 func (shortenerService *UrlShortenerService) GetFullURL(ctx context.Context, shortURL string) (model.RequestURLData, error) {
 	v, err := shortenerService.shortenerUrls.GetFullUrl(ctx, shortURL)
 	if err != nil {
-		return model.RequestURLData{}, fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
+		if errors.Is(err, repository.NotFoundError) {
+			return model.RequestURLData{}, fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
+		}
+		return model.RequestURLData{}, err
 	}
 	return v, nil
 }
@@ -63,7 +66,7 @@ func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, url
 
 		err := shortenerService.shortenerUrls.SetUrl(ctx, urlRecord)
 		if err != nil {
-			if errors.Is(err, repository.CollisionError) {
+			if errors.Is(err, repository.ShortUrlCollisionError) {
 				shortenerService.logger.Debug("Can't generate short key because of collision.", zap.String("short key", shortURL))
 				continue
 			} else {

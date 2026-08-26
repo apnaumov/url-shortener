@@ -66,12 +66,21 @@ func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, url
 
 		err := shortenerService.shortenerUrls.SetUrl(ctx, urlRecord)
 		if err != nil {
+			var targetErr *repository.FullUrlCollisionError
+			if errors.As(err, &targetErr) {
+				resShortUrl, err := url.JoinPath(shortenerService.urlBaseAddr, shortURL)
+				if err != nil {
+					return model.ResponceURLData{}, err
+				}
+				targetErr.ShortUrl = resShortUrl
+				return model.ResponceURLData{}, targetErr
+			}
+
 			if errors.Is(err, repository.ShortUrlCollisionError) {
 				shortenerService.logger.Debug("Can't generate short key because of collision.", zap.String("short key", shortURL))
 				continue
-			} else {
-				return model.ResponceURLData{}, err
 			}
+			return model.ResponceURLData{}, err
 		} else {
 			break
 		}

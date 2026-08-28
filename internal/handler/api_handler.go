@@ -11,6 +11,7 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 func (router *UrlShortenerRouter) setApiHandlers() {
@@ -50,17 +51,17 @@ func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	responceData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: postURL.URL})
+	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: postURL.URL})
 
 	var status int
 	var res model.ResultShortenURL
 
 	if err != nil {
-		var targetErr *repository.FullUrlCollisionError
-		if errors.As(err, &targetErr) {
-			router.requestLogger.Warn(targetErr.Error())
+		if errors.Is(err, repository.FullUrlCollisionError) {
+			router.requestLogger.Warn(repository.FullUrlCollisionError.Error(),
+				zap.String("short_url", responseData.ShortUrl), zap.String("correlation_id", responseData.CorrelationId))
 			status = http.StatusConflict
-			res = model.ResultShortenURL{Result: targetErr.ShortUrl}
+			res = model.ResultShortenURL{Result: responseData.ShortUrl}
 		} else {
 			router.requestLogger.Error(err.Error())
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -68,7 +69,7 @@ func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Requ
 		}
 	} else {
 		status = http.StatusCreated
-		res = model.ResultShortenURL{Result: responceData.ShortUrl}
+		res = model.ResultShortenURL{Result: responseData.ShortUrl}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -101,41 +102,36 @@ func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	responceDataBatch := make([]model.ResponceURLData, 0, len(requestDataBatch))
-
 	for i := range requestDataBatch {
 		if len(requestDataBatch[i].CorrelationId) == 0 || len(requestDataBatch[i].OriginalURL) == 0 {
 			http.Error(w, "URL data must be not empty", http.StatusBadRequest)
 			return
 		}
+	}
 
-		responceData, err := router.service.SetFullURL(ctx, requestDataBatch[i])
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
-		if err != nil {
-			var status int
-			var targetErr *repository.FullUrlCollisionError
-			if errors.As(err, &targetErr) {
-				router.requestLogger.Warn(targetErr.Error())
-				status = http.StatusConflict
-			} else {
-				router.requestLogger.Error(err.Error())
-				status = http.StatusInternalServerError
-			}
+	responseDataBatch, err := router.service.SetFullURLBatch(ctx, requestDataBatch)
 
-			http.Error(w, http.StatusText(status), status)
+	var status int
+	if err != nil {
+		if errors.Is(err, repository.FullUrlCollisionError) {
+			router.requestLogger.Warn(repository.FullUrlCollisionError.Error(), zap.Int("batch size", len(responseDataBatch)))
+			status = http.StatusConflict
+		} else {
+			router.requestLogger.Error(err.Error())
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-
-		responceDataBatch = append(responceDataBatch, responceData)
+	} else {
+		status = http.StatusCreated
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 
-	if err := json.NewEncoder(w).Encode(responceDataBatch); err != nil {
+	if err := json.NewEncoder(w).Encode(responseDataBatch); err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

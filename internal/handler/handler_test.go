@@ -62,7 +62,7 @@ func TestPostNewURL(t *testing.T) {
 	type want struct {
 		code          int
 		bodyNotEmpty  bool
-		prefferedBody string
+		preferredBody string
 		contentType   string
 	}
 	tests := []struct {
@@ -92,7 +92,7 @@ func TestPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "Content-type incorrect\n",
+				preferredBody: "Content-type incorrect\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -106,7 +106,7 @@ func TestPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "Body must be not empty\n",
+				preferredBody: "Body must be not empty\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -130,8 +130,8 @@ func TestPostNewURL(t *testing.T) {
 
 			if test.want.bodyNotEmpty {
 				assert.NotEmpty(t, resBody)
-				if len(test.want.prefferedBody) != 0 {
-					assert.Equal(t, test.want.prefferedBody, string(resBody))
+				if len(test.want.preferredBody) != 0 {
+					assert.Equal(t, test.want.preferredBody, string(resBody))
 				}
 			}
 

@@ -85,28 +85,27 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	responceData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body)})
+	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body)})
+	var status int
 
 	if err != nil {
-		var targetErr *repository.FullUrlCollisionError
-		if errors.As(err, &targetErr) {
-			router.requestLogger.Warn(targetErr.Error())
-			w.Header().Set("Content-Type", "text/plain")
-			w.WriteHeader(http.StatusConflict)
-
-			w.Write([]byte(targetErr.ShortUrl))
+		if errors.Is(err, repository.FullUrlCollisionError) {
+			router.requestLogger.Warn(repository.FullUrlCollisionError.Error(),
+				zap.String("short_url", responseData.ShortUrl), zap.String("correlation_id", responseData.CorrelationId))
+			status = http.StatusConflict
 		} else {
 			router.requestLogger.Error(err.Error())
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
-
-		return
+	} else {
+		status = http.StatusCreated
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 
-	w.Write([]byte(responceData.ShortUrl))
+	w.Write([]byte(responseData.ShortUrl))
 }
 
 func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
@@ -132,12 +131,7 @@ func (router *UrlShortenerRouter) pingDb(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var err error
-	if storage, isDbType := router.service.GetStorage().(*repository.DbStorage); isDbType {
-		err = storage.GetNativeDb().PingContext(ctx)
-	} else {
-		err = errors.New("storage not an DbStorage type")
-	}
+	err := router.service.GetStorage().Ping(ctx)
 
 	if err != nil {
 		router.requestLogger.Error(err.Error())

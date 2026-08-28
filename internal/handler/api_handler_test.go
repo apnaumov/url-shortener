@@ -25,7 +25,7 @@ func TestApiPostNewURL(t *testing.T) {
 	type want struct {
 		code            int
 		bodyNotEmpty    bool
-		prefferedBody   string
+		preferredBody   string
 		wantMatchRegExp bool
 		contentType     string
 	}
@@ -46,7 +46,7 @@ func TestApiPostNewURL(t *testing.T) {
 				bodyNotEmpty:    true,
 				contentType:     "application/json",
 				wantMatchRegExp: true,
-				prefferedBody:   `^\{.*"result":\s*".*".*\}`,
+				preferredBody:   `^\{.*"result":\s*".*".*\}`,
 			},
 		},
 		{
@@ -59,7 +59,7 @@ func TestApiPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "Content-type incorrect\n",
+				preferredBody: "Content-type incorrect\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -73,7 +73,7 @@ func TestApiPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "Body must be not empty\n",
+				preferredBody: "Body must be not empty\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -87,7 +87,7 @@ func TestApiPostNewURL(t *testing.T) {
 			want: want{
 				code:          500,
 				bodyNotEmpty:  true,
-				prefferedBody: "Internal Server Error\n",
+				preferredBody: "Internal Server Error\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -101,7 +101,7 @@ func TestApiPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "URL must be not empty\n",
+				preferredBody: "URL must be not empty\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -128,7 +128,7 @@ func TestApiPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "Content-type incorrect\n",
+				preferredBody: "Content-type incorrect\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -142,7 +142,7 @@ func TestApiPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "Body must be not empty\n",
+				preferredBody: "Body must be not empty\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -156,7 +156,7 @@ func TestApiPostNewURL(t *testing.T) {
 			want: want{
 				code:          500,
 				bodyNotEmpty:  true,
-				prefferedBody: "Internal Server Error\n",
+				preferredBody: "Internal Server Error\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -170,7 +170,7 @@ func TestApiPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "URL data must be not empty\n",
+				preferredBody: "URL data must be not empty\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -194,13 +194,13 @@ func TestApiPostNewURL(t *testing.T) {
 
 			if test.want.bodyNotEmpty {
 				assert.NotEmpty(t, resBody)
-				if len(test.want.prefferedBody) != 0 {
+				if len(test.want.preferredBody) != 0 {
 					if test.want.wantMatchRegExp {
-						reg, err := regexp.Compile(test.want.prefferedBody)
+						reg, err := regexp.Compile(test.want.preferredBody)
 						require.NoError(t, err)
 						assert.True(t, reg.MatchString(string(resBody)))
 					} else {
-						assert.Equal(t, test.want.prefferedBody, string(resBody))
+						assert.Equal(t, test.want.preferredBody, string(resBody))
 					}
 				}
 			}
@@ -216,29 +216,48 @@ func TestApiPostConflictFullUrl(t *testing.T) {
 	ts.Start()
 	defer ts.Close()
 
-	body := `{ "url": "https://abc.net"}`
+	tests := []struct {
+		name   string
+		prefix string
+		body   string
+	}{
+		{
+			name:   "conflict with only url",
+			prefix: "/api/shorten",
+			body:   `{ "url": "https://abc.net"}`,
+		},
+		{
+			name:   "conflict batch url",
+			prefix: "/api/shorten/batch",
+			body:   `[{ "correlation_id": "asd", "original_url": "def.com"}, {"correlation_id": "def", "original_url": "asd.com"}]`,
+		},
+	}
 
-	request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, "/api/shorten"}, ""), strings.NewReader(body))
-	require.NoError(t, err)
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept-Encoding", "")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, test.prefix}, ""), strings.NewReader(test.body))
+			require.NoError(t, err)
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept-Encoding", "")
 
-	resp, err := ts.Client().Do(request)
-	require.NoError(t, err)
+			resp, err := ts.Client().Do(request)
+			require.NoError(t, err)
 
-	// проверяем код ответа
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
-	defer resp.Body.Close()
+			// проверяем код ответа
+			assert.Equal(t, http.StatusCreated, resp.StatusCode)
+			defer resp.Body.Close()
 
-	repeatReq, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, "/api/shorten"}, ""), strings.NewReader(body))
-	require.NoError(t, err)
-	repeatReq.Header.Set("Content-Type", "application/json")
-	repeatReq.Header.Set("Accept-Encoding", "")
+			repeatReq, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, test.prefix}, ""), strings.NewReader(test.body))
+			require.NoError(t, err)
+			repeatReq.Header.Set("Content-Type", "application/json")
+			repeatReq.Header.Set("Accept-Encoding", "")
 
-	repeatResp, err := ts.Client().Do(repeatReq)
-	require.NoError(t, err)
+			repeatResp, err := ts.Client().Do(repeatReq)
+			require.NoError(t, err)
 
-	// проверяем код ответа
-	assert.Equal(t, http.StatusConflict, repeatResp.StatusCode)
-	defer repeatResp.Body.Close()
+			// проверяем код ответа
+			assert.Equal(t, http.StatusConflict, repeatResp.StatusCode)
+			defer repeatResp.Body.Close()
+		})
+	}
 }

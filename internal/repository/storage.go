@@ -1,55 +1,24 @@
 package repository
 
 import (
+	"context"
 	"errors"
-	"maps"
-	"sync"
+
+	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
-type Storage[T any] struct {
-	mu        sync.Mutex
-	container map[string]T
+type UrlStorage interface {
+	GetFullUrl(ctx context.Context, shortUrl string) (model.RequestURLData, error)
+	SetUrl(ctx context.Context, urlRecord model.URLRecord) (model.ResponceURLData, error)
+	SetUrlBatch(ctx context.Context, urlRecords []model.URLRecord) ([]model.ResponceURLData, UnacceptedUrlRecords, error)
+	OnServerShutdown() error
+	Ping(ctx context.Context) error
 }
+
+type UnacceptedUrlRecords []model.URLRecord
 
 var (
-	NotFoundError  = errors.New("doesn't have in storage")
-	CollisionError = errors.New("storage already have this key")
+	ShortUrlCollisionError = errors.New("storage already have this short_url")
+	NotFoundError          = errors.New("can't find record")
+	FullUrlCollisionError  = errors.New("storage already have this url(s)")
 )
-
-func NewStorage[T any]() *Storage[T] {
-	return &Storage[T]{
-		container: make(map[string]T),
-	}
-}
-
-func (store *Storage[T]) Get(key string) (T, error) {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
-	elem, ok := store.container[key]
-
-	if !ok {
-		return elem, NotFoundError
-	}
-	return elem, nil
-}
-
-func (store *Storage[T]) Set(key string, value T) error {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
-	_, ok := store.container[key]
-	if !ok {
-		store.container[key] = value
-		return nil
-	}
-
-	return CollisionError
-}
-
-func (store *Storage[T]) GetAll() map[string]T {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
-	return maps.Clone(store.container)
-}

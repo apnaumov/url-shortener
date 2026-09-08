@@ -1,10 +1,15 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/apnaumov/url-shortener.git/internal/logger"
+	"github.com/apnaumov/url-shortener.git/internal/model"
+	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/apnaumov/url-shortener.git/internal/service"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -16,7 +21,7 @@ type UrlShortenerRouter struct {
 	requestLogger *zap.Logger
 }
 
-func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShortenerRouter, error) {
+func NewUrlShortenerRouter(urlBaseAddr string, urlStorage repository.UrlStorage) (*UrlShortenerRouter, error) {
 	urlShortenerRouter := &UrlShortenerRouter{}
 	urlShortenerRouter.Mux = chi.NewRouter()
 
@@ -28,7 +33,7 @@ func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShor
 
 	urlShortenerRouter.requestLogger = requestLogger
 
-	shortener, err := service.NewUrlShortenerService(urlBaseAddr, fileStoragePath)
+	shortener, err := service.NewUrlShortenerService(urlBaseAddr, urlStorage)
 
 	if err != nil {
 		return nil, err
@@ -40,6 +45,7 @@ func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShor
 	urlShortenerRouter.Mux.Use(urlShortenerRouter.gzipMiddleware)
 	urlShortenerRouter.Mux.Post("/", urlShortenerRouter.postNewURL)
 	urlShortenerRouter.Mux.Get("/{shortPath}", urlShortenerRouter.getFullURL)
+	urlShortenerRouter.Mux.Get("/ping", urlShortenerRouter.pingDb)
 	urlShortenerRouter.Mux.MethodNotAllowed(urlShortenerRouter.methodNotAllowed)
 	urlShortenerRouter.setApiHandlers()
 
@@ -47,7 +53,7 @@ func NewUrlShortenerRouter(urlBaseAddr string, fileStoragePath string) (*UrlShor
 }
 
 func (router *UrlShortenerRouter) OnShutdown() {
-	if err := router.service.SaveToFile(); err != nil {
+	if err := router.service.OnServerShutdown(); err != nil {
 		router.requestLogger.Warn("Error while save service's configuration on shutdown", zap.String("error", err.Error()))
 	} else {
 		router.requestLogger.Info("Service's configuration saved on shutdown")
@@ -76,28 +82,62 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fullURL, err := router.service.SetFullURL(string(body))
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body)})
+	var status int
+
+	if err != nil {
+		if errors.Is(err, repository.FullUrlCollisionError) {
+			router.requestLogger.Warn(repository.FullUrlCollisionError.Error(),
+				zap.String("short_url", responseData.ShortUrl), zap.String("correlation_id", responseData.CorrelationId))
+			status = http.StatusConflict
+		} else {
+			router.requestLogger.Error(err.Error())
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		status = http.StatusCreated
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(status)
+
+	w.Write([]byte(responseData.ShortUrl))
+}
+
+func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
+	shortPath := chi.URLParam(r, "shortPath")
+	urlData, err := router.service.GetFullURL(r.Context(), shortPath)
+	if err != nil {
+		if errors.Is(err, repository.NotFoundError) {
+			router.requestLogger.Warn(err.Error())
+			http.Error(w, "Invalid URL in request", http.StatusBadRequest)
+		} else {
+			router.requestLogger.Error(err.Error())
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	w.Header().Set("Location", urlData.OriginalURL)
+	w.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func (router *UrlShortenerRouter) pingDb(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	err := router.service.GetStorage().Ping(ctx)
+
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
-
-	w.Write([]byte(fullURL))
-}
-
-func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
-	shortPath := chi.URLParam(r, "shortPath")
-	fullURL, err := router.service.GetFullURL(shortPath)
-	if err != nil {
-		router.requestLogger.Error(err.Error())
-		http.Error(w, "Invalid URL in request", http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Location", fullURL)
-	w.WriteHeader(http.StatusTemporaryRedirect)
+	w.WriteHeader(http.StatusOK)
 }

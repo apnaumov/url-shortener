@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +17,11 @@ func setUpServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	// получение URL и последующая настройка
 	ts := httptest.NewUnstartedServer(nil)
-	router, err := NewUrlShortenerRouter("http://"+ts.Listener.Addr().String(), "")
+
+	storage, err := repository.NewRuntimeStorage("")
+	require.NoError(t, err)
+
+	router, err := NewUrlShortenerRouter("http://"+ts.Listener.Addr().String(), storage)
 	require.NoError(t, err)
 	ts.Config.Handler = router.Mux
 
@@ -57,7 +62,7 @@ func TestPostNewURL(t *testing.T) {
 	type want struct {
 		code          int
 		bodyNotEmpty  bool
-		prefferedBody string
+		preferredBody string
 		contentType   string
 	}
 	tests := []struct {
@@ -87,7 +92,7 @@ func TestPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "Content-type incorrect\n",
+				preferredBody: "Content-type incorrect\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -101,7 +106,7 @@ func TestPostNewURL(t *testing.T) {
 			want: want{
 				code:          400,
 				bodyNotEmpty:  true,
-				prefferedBody: "Body must be not empty\n",
+				preferredBody: "Body must be not empty\n",
 				contentType:   "text/plain; charset=utf-8",
 			},
 		},
@@ -125,8 +130,8 @@ func TestPostNewURL(t *testing.T) {
 
 			if test.want.bodyNotEmpty {
 				assert.NotEmpty(t, resBody)
-				if len(test.want.prefferedBody) != 0 {
-					assert.Equal(t, test.want.prefferedBody, string(resBody))
+				if len(test.want.preferredBody) != 0 {
+					assert.Equal(t, test.want.preferredBody, string(resBody))
 				}
 			}
 
@@ -192,4 +197,36 @@ func TestGetFullUrl(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, getResp.StatusCode)
 		assert.Equal(t, "Invalid URL in request\n", string(getBuf))
 	})
+}
+
+func TestPostConflictFullUrl(t *testing.T) {
+	ts := setUpServer(t)
+	ts.Start()
+	defer ts.Close()
+
+	body := "https://abc.net"
+
+	request, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, "/"}, ""), strings.NewReader(body))
+	require.NoError(t, err)
+	request.Header.Set("Content-Type", "text/plain")
+	request.Header.Set("Accept-Encoding", "")
+
+	resp, err := ts.Client().Do(request)
+	require.NoError(t, err)
+
+	// проверяем код ответа
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	defer resp.Body.Close()
+
+	repeatReq, err := http.NewRequest(http.MethodPost, strings.Join([]string{ts.URL, "/"}, ""), strings.NewReader(body))
+	require.NoError(t, err)
+	repeatReq.Header.Set("Content-Type", "text/plain")
+	repeatReq.Header.Set("Accept-Encoding", "")
+
+	repeatResp, err := ts.Client().Do(repeatReq)
+	require.NoError(t, err)
+
+	// проверяем код ответа
+	assert.Equal(t, http.StatusConflict, repeatResp.StatusCode)
+	defer repeatResp.Body.Close()
 }

@@ -1,13 +1,11 @@
 package service
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/url"
-	"os"
 
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/model"
@@ -16,13 +14,12 @@ import (
 )
 
 type UrlShortenerService struct {
-	shortenerUrls   *repository.Storage[string]
-	urlBaseAddr     string
-	fileStoragePath string
-	logger          *zap.Logger
+	shortenerUrls repository.UrlStorage
+	urlBaseAddr   string
+	logger        *zap.Logger
 }
 
-func NewUrlShortenerService(urlBaseAddr string, fileStoragePath string) (*UrlShortenerService, error) {
+func NewUrlShortenerService(urlBaseAddr string, urlStorage repository.UrlStorage) (*UrlShortenerService, error) {
 	url, err := url.Parse(urlBaseAddr)
 	if err != nil {
 		return nil, err
@@ -31,94 +28,119 @@ func NewUrlShortenerService(urlBaseAddr string, fileStoragePath string) (*UrlSho
 	shortenerLogger, err := logger.InitializeRootLogger("shortener_service", "info")
 
 	urlShortenerService := &UrlShortenerService{
-		urlBaseAddr:     url.String(),
-		fileStoragePath: fileStoragePath,
-		shortenerUrls:   repository.NewStorage[string](),
-		logger:          shortenerLogger,
-	}
-
-	if err := urlShortenerService.loadFromFile(); err != nil {
-		urlShortenerService.logger.Warn("Error while load configuration from file", zap.String("error", err.Error()))
+		urlBaseAddr:   url.String(),
+		shortenerUrls: urlStorage,
+		logger:        shortenerLogger,
 	}
 
 	return urlShortenerService, nil
 }
 
-func (shortenerService *UrlShortenerService) GetFullURL(shortURL string) (string, error) {
-	v, err := shortenerService.shortenerUrls.Get(shortURL)
+func (shortenerService *UrlShortenerService) GetStorage() repository.UrlStorage {
+	return shortenerService.shortenerUrls
+}
+
+func (shortenerService *UrlShortenerService) OnServerShutdown() error {
+	return shortenerService.shortenerUrls.OnServerShutdown()
+}
+
+func (shortenerService *UrlShortenerService) GetFullURL(ctx context.Context, shortURL string) (model.RequestURLData, error) {
+	v, err := shortenerService.shortenerUrls.GetFullUrl(ctx, shortURL)
 	if err != nil {
-		return "", fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
+		if errors.Is(err, repository.NotFoundError) {
+			return model.RequestURLData{}, fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
+		}
+		return model.RequestURLData{}, err
 	}
 	return v, nil
 }
 
-func (shortenerService *UrlShortenerService) SetFullURL(fullURL string) (string, error) {
+func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, urlData model.RequestURLData) (model.ResponceURLData, error) {
 	const maxAttemptsToGenerateKey = 10
-	var shortURL string
-
+	var responseData model.ResponceURLData
+	var collisionErr error = nil
 	for range maxAttemptsToGenerateKey {
-		shortURL = generateShortKey()
+		shortURL := generateShortKey()
 
-		err := shortenerService.shortenerUrls.Set(shortURL, fullURL)
+		urlRecord := model.URLRecord{ShortURL: shortURL, UrlData: urlData}
+
+		resp, err := shortenerService.shortenerUrls.SetUrl(ctx, urlRecord)
+
 		if err != nil {
-			if errors.Is(err, repository.CollisionError) {
+			if errors.Is(err, repository.FullUrlCollisionError) {
+				collisionErr = repository.FullUrlCollisionError
+			} else if errors.Is(err, repository.ShortUrlCollisionError) {
 				shortenerService.logger.Debug("Can't generate short key because of collision.", zap.String("short key", shortURL))
 				continue
 			} else {
-				return "", err
+				return model.ResponceURLData{}, err
 			}
+		}
+		responseData = resp
+		break
+	}
+
+	resShortUrl, err := url.JoinPath(shortenerService.urlBaseAddr, responseData.ShortUrl)
+	if err != nil {
+		return model.ResponceURLData{}, err
+	}
+	responseData.ShortUrl = resShortUrl
+
+	return responseData, collisionErr
+}
+
+func (shortenerService *UrlShortenerService) SetFullURLBatch(ctx context.Context, urlDatas []model.RequestURLData) ([]model.ResponceURLData, error) {
+	const maxAttemptsToGenerateKey = 10
+	responseDataBatch := make([]model.ResponceURLData, 0, len(urlDatas))
+	var collisionErr error = nil
+
+	attemptsToGenKeys := 0
+
+	urlRecords := make([]model.URLRecord, 0, len(urlDatas))
+	// generate url records with empty short url
+	for i := range urlDatas {
+		urlRecords = append(urlRecords, model.URLRecord{UrlData: urlDatas[i]})
+	}
+
+	for range maxAttemptsToGenerateKey {
+		attemptsToGenKeys++
+
+		// set generated short urls to urlRecords
+		for i := range urlRecords {
+			urlRecords[i].ShortURL = generateShortKey()
+		}
+
+		currentRespData, unacceptedUrlRecords, err := shortenerService.shortenerUrls.SetUrlBatch(ctx, urlRecords)
+		responseDataBatch = append(responseDataBatch, currentRespData...)
+
+		if err != nil {
+			if errors.Is(err, repository.FullUrlCollisionError) {
+				collisionErr = repository.FullUrlCollisionError
+			} else {
+				return nil, err
+			}
+		}
+
+		if len(unacceptedUrlRecords) != 0 {
+			urlRecords = unacceptedUrlRecords
 		} else {
 			break
 		}
 	}
 
-	return url.JoinPath(shortenerService.urlBaseAddr, shortURL)
-}
-
-func (shortenerService *UrlShortenerService) loadFromFile() error {
-	file, err := os.OpenFile(shortenerService.fileStoragePath, os.O_RDONLY, 0666)
-	if err != nil {
-		return err
+	if attemptsToGenKeys == maxAttemptsToGenerateKey {
+		return nil, repository.ShortUrlCollisionError
 	}
-	defer file.Close()
 
-	jsonDecoder := json.NewDecoder(file)
-
-	for {
-		record := model.URLFileRecord{}
-		err := jsonDecoder.Decode(&record)
-		if err == io.EOF {
-			break
-		}
+	for i := range responseDataBatch {
+		resShortUrl, err := url.JoinPath(shortenerService.urlBaseAddr, responseDataBatch[i].ShortUrl)
 		if err != nil {
-			return err
+			return nil, err
 		}
-
-		if err := shortenerService.shortenerUrls.Set(record.ShortURL, record.OriginalURL); err != nil {
-			return err
-		}
+		responseDataBatch[i].ShortUrl = resShortUrl
 	}
 
-	return nil
-}
-
-func (shortenerService *UrlShortenerService) SaveToFile() error {
-	file, err := os.OpenFile(shortenerService.fileStoragePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-	if err != nil {
-		return err
-	}
-
-	storageContainer := shortenerService.shortenerUrls.GetAll()
-
-	jsonEncoder := json.NewEncoder(file)
-
-	for k, v := range storageContainer {
-		if err := jsonEncoder.Encode(model.URLFileRecord{ShortURL: k, OriginalURL: v}); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return responseDataBatch, collisionErr
 }
 
 // Generate a random short key (generated by AI)

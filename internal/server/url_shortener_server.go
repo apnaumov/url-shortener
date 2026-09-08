@@ -13,6 +13,7 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/handler"
 	"github.com/apnaumov/url-shortener.git/internal/logger"
+	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"go.uber.org/zap"
 )
 
@@ -29,7 +30,25 @@ func StartUrlShortenerServer() {
 	}
 	zap.RedirectStdLog(logger)
 
-	router, err := handler.NewUrlShortenerRouter(conf.ServerBaseUrl, conf.FileStoragePath)
+	var storage repository.UrlStorage
+	logger.Info("Try to initialize storage")
+	if len(conf.DbConnectionString) != 0 {
+		st, err := repository.NewDbStorage(conf.DbConnectionString)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		logger.Info("Db storage initialized")
+		storage = st
+	} else {
+		st, err := repository.NewRuntimeStorage(conf.FileStoragePath)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		logger.Info("Runtime storage initialized")
+		storage = st
+	}
+
+	router, err := handler.NewUrlShortenerRouter(conf.ServerBaseUrl, storage)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}

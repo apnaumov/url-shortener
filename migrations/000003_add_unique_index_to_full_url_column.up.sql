@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_full_url ON shortener_urls(full_url);

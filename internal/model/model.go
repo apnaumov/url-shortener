@@ -8,7 +8,17 @@ type ResultShortenURL struct {
 	Result string `json:"result"`
 }
 
-type URLFileRecord struct {
-	ShortURL    string `json:"short_url"`
-	OriginalURL string `json:"original_url"`
+type URLRecord struct {
+	ShortURL string `json:"short_url"`
+	UrlData  RequestURLData
+}
+
+type RequestURLData struct {
+	OriginalURL   string `json:"original_url"`
+	CorrelationId string `json:"correlation_id"`
+}
+
+type ResponceURLData struct {
+	ShortUrl      string `json:"short_url"`
+	CorrelationId string `json:"correlation_id"`
 }

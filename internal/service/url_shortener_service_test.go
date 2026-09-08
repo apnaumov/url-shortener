@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"net/url"
 	"os"
@@ -15,23 +16,29 @@ import (
 )
 
 func TestRuntimeUsage(t *testing.T) {
-	serv, err := NewUrlShortenerService("http://localhost:8080", "")
+	storage, err := repository.NewRuntimeStorage("")
 	require.NoError(t, err)
 
-	fullURL, err := serv.GetFullURL("asd")
-	assert.Empty(t, fullURL)
+	serv, err := NewUrlShortenerService("http://localhost:8080", storage)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	urlData, err := serv.GetFullURL(ctx, "asd")
+	assert.Empty(t, urlData.OriginalURL)
 	assert.ErrorIs(t, err, repository.NotFoundError)
 
-	shortURL, err := serv.SetFullURL("asd")
+	responseData, err := serv.SetFullURL(ctx, model.RequestURLData{OriginalURL: "asd"})
 	require.NoError(t, err)
-	require.NotEmpty(t, shortURL)
+	require.NotEmpty(t, responseData.ShortUrl)
 
-	url, err := url.Parse(shortURL)
+	url, err := url.Parse(responseData.ShortUrl)
 	require.NoError(t, err)
 
-	fullURL, err = serv.GetFullURL(strings.ReplaceAll(url.Path, "/", ""))
+	urlData, err = serv.GetFullURL(ctx, strings.ReplaceAll(url.Path, "/", ""))
 	assert.NoError(t, err)
-	assert.Equal(t, "asd", fullURL)
+	assert.Equal(t, "asd", urlData.OriginalURL)
 }
 
 func TestUsageWithFileData(t *testing.T) {
@@ -40,9 +47,9 @@ func TestUsageWithFileData(t *testing.T) {
 
 	const serverBaseUrl = "http://localhost:8080"
 
-	testData := []model.URLFileRecord{
-		{ShortURL: "jhwGRw", OriginalURL: "asdasdasddsa"},
-		{ShortURL: "tk7Zla", OriginalURL: "daberq"},
+	testData := []model.URLRecord{
+		{ShortURL: "jhwGRw", UrlData: model.RequestURLData{OriginalURL: "asdasdasddsa"}},
+		{ShortURL: "tk7Zla", UrlData: model.RequestURLData{OriginalURL: "daberq"}},
 	}
 
 	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
@@ -56,12 +63,18 @@ func TestUsageWithFileData(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	serv, err := NewUrlShortenerService(serverBaseUrl, filepath)
+	storage, err := repository.NewRuntimeStorage(filepath)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	serv, err := NewUrlShortenerService(serverBaseUrl, storage)
 	require.NoError(t, err)
 
 	for _, v := range testData {
-		fullUrl, err := serv.GetFullURL(v.ShortURL)
+		fullUrl, err := serv.GetFullURL(ctx, v.ShortURL)
 		assert.NoError(t, err)
-		assert.Equal(t, v.OriginalURL, fullUrl)
+		assert.Equal(t, v.UrlData, fullUrl)
 	}
 }

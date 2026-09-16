@@ -177,7 +177,7 @@ func (storage *DBStorage) Ping(ctx context.Context) error {
 func (storage *DBStorage) CreateNewUser(ctx context.Context) (uint64, error) {
 	var userID uint64
 
-	row := storage.db.QueryRowContext(ctx, insertNewuserID)
+	row := storage.db.QueryRowContext(ctx, insertNewUserID)
 	err := row.Scan(&userID)
 	if err != nil {
 		return 0, err

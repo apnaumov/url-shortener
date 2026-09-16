@@ -8,5 +8,5 @@ const (
 							VALUES ($1, $2, $3, $4) 
 						ON CONFLICT (full_url) DO 
 							UPDATE SET full_url = shortener_urls.full_url RETURNING short_url, correlation_id`
-	insertNewuserID = "INSERT INTO shortener_url_users DEFAULT VALUES RETURNING user_id;"
+	insertNewUserID = "SELECT nextval('user_id_seq')"
 )

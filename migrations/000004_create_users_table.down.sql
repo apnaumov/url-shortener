@@ -1,3 +1,2 @@
-ALTER TABLE shortener_urls DROP CONSTRAINT IF EXISTS fk_shortener_urls_user;
+DROP SEQUENCE IF EXISTS user_id_seq;
 ALTER TABLE shortener_urls DROP COLUMN IF EXISTS user_id;
-DROP TABLE IF EXISTS shortener_url_users; 

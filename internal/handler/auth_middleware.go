@@ -11,7 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-type UserIdKey struct{}
+type UserIDKey struct{}
 
 const TokenExp = time.Hour * 24 * 7
 
@@ -52,7 +52,7 @@ func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler
 			userID = claims.UserID
 		}
 
-		ctx := context.WithValue(r.Context(), UserIdKey{}, userID)
+		ctx := context.WithValue(r.Context(), UserIDKey{}, userID)
 		h.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -102,7 +102,7 @@ func (router *URLShortenerRouter) parseJWTString(tokenString string) (model.Clai
 }
 
 func getUserIDFromCtx(ctx context.Context) (uint64, error) {
-	rawuserID := ctx.Value(UserIdKey{})
+	rawuserID := ctx.Value(UserIDKey{})
 
 	if userID, ok := rawuserID.(uint64); ok {
 		return userID, nil

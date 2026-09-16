@@ -19,37 +19,40 @@ func TestRuntimeUsage(t *testing.T) {
 	storage, err := repository.NewRuntimeStorage("")
 	require.NoError(t, err)
 
-	serv, err := NewUrlShortenerService("http://localhost:8080", storage)
+	serv, err := NewURLShortenerService("http://localhost:8080", storage)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	urlData, err := serv.GetFullURL(ctx, "asd")
-	assert.Empty(t, urlData.OriginalURL)
-	assert.ErrorIs(t, err, repository.NotFoundError)
+	URLData, err := serv.GetFullURL(ctx, "asd")
+	assert.Empty(t, URLData)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
 
 	responseData, err := serv.SetFullURL(ctx, model.RequestURLData{OriginalURL: "asd"})
 	require.NoError(t, err)
-	require.NotEmpty(t, responseData.ShortUrl)
+	require.NotEmpty(t, responseData.ShortURL)
 
-	url, err := url.Parse(responseData.ShortUrl)
+	URL, err := url.Parse(responseData.ShortURL)
 	require.NoError(t, err)
 
-	urlData, err = serv.GetFullURL(ctx, strings.ReplaceAll(url.Path, "/", ""))
+	URLData, err = serv.GetFullURL(ctx, strings.ReplaceAll(URL.Path, "/", ""))
 	assert.NoError(t, err)
-	assert.Equal(t, "asd", urlData.OriginalURL)
+	assert.Equal(t, "asd", URLData)
 }
 
 func TestUsageWithFileData(t *testing.T) {
 	tempDir := t.TempDir()
 	filepath := filepath.Join(tempDir, "test_data.storage")
 
-	const serverBaseUrl = "http://localhost:8080"
+	const serverBaseURL = "http://localhost:8080"
 
-	testData := []model.URLRecord{
-		{ShortURL: "jhwGRw", UrlData: model.RequestURLData{OriginalURL: "asdasdasddsa"}},
-		{ShortURL: "tk7Zla", UrlData: model.RequestURLData{OriginalURL: "daberq"}},
+	testData := model.URLDataToSaveToFile{
+		CurrentUserID: 0,
+		URLRecords: []model.URLRecord{
+			{ShortURL: "jhwGRw", URLData: model.RequestURLData{OriginalURL: "asdasdasddsa"}},
+			{ShortURL: "tk7Zla", URLData: model.RequestURLData{OriginalURL: "daberq"}},
+		},
 	}
 
 	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
@@ -58,10 +61,8 @@ func TestUsageWithFileData(t *testing.T) {
 
 	jsonEncoder := json.NewEncoder(file)
 
-	for _, v := range testData {
-		err := jsonEncoder.Encode(v)
-		require.NoError(t, err)
-	}
+	err = jsonEncoder.Encode(testData)
+	require.NoError(t, err)
 
 	storage, err := repository.NewRuntimeStorage(filepath)
 	require.NoError(t, err)
@@ -69,12 +70,12 @@ func TestUsageWithFileData(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	serv, err := NewUrlShortenerService(serverBaseUrl, storage)
+	serv, err := NewURLShortenerService(serverBaseURL, storage)
 	require.NoError(t, err)
 
-	for _, v := range testData {
-		fullUrl, err := serv.GetFullURL(ctx, v.ShortURL)
+	for _, v := range testData.URLRecords {
+		fullURL, err := serv.GetFullURL(ctx, v.ShortURL)
 		assert.NoError(t, err)
-		assert.Equal(t, v.UrlData, fullUrl)
+		assert.Equal(t, v.URLData.OriginalURL, fullURL)
 	}
 }

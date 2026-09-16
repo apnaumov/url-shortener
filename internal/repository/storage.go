@@ -7,18 +7,20 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
-type UrlStorage interface {
-	GetFullUrl(ctx context.Context, shortUrl string) (model.RequestURLData, error)
-	SetUrl(ctx context.Context, urlRecord model.URLRecord) (model.ResponceURLData, error)
-	SetUrlBatch(ctx context.Context, urlRecords []model.URLRecord) ([]model.ResponceURLData, UnacceptedUrlRecords, error)
+type URLStorage interface {
+	GetFullURL(ctx context.Context, shortURL string) (string, error)
+	GetUserURLs(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error)
+	SetURL(ctx context.Context, URLRecord model.URLRecord) (model.ResponcePostURLData, error)
+	SetURLBatch(ctx context.Context, URLRecords []model.URLRecord) ([]model.ResponcePostURLData, UnacceptedURLRecords, error)
+	CreateNewUser(ctx context.Context) (uint64, error)
 	OnServerShutdown() error
 	Ping(ctx context.Context) error
 }
 
-type UnacceptedUrlRecords []model.URLRecord
+type UnacceptedURLRecords []model.URLRecord
 
 var (
-	ShortUrlCollisionError = errors.New("storage already have this short_url")
-	NotFoundError          = errors.New("can't find record")
-	FullUrlCollisionError  = errors.New("storage already have this url(s)")
+	ErrShortURLCollision = errors.New("storage already have this short_URL")
+	ErrNotFound          = errors.New("can't find record")
+	ErrFullURLCollision  = errors.New("storage already have this URL(s)")
 )

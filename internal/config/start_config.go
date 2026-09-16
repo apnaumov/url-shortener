@@ -24,16 +24,9 @@ func InitConfig() Config {
 
 	if len(config.SecretKey) == 0 {
 		secretKey, err := generateSecretKey(32)
-
 		if err != nil {
 			log.Fatalf("Can't generate secret key. Error: %s", err.Error())
 		}
-
-		err = os.Setenv("SHORTENER_SECRET_KEY", string(secretKey))
-		if err != nil {
-			log.Fatalf("Can't set secret key to env variable. Error: %s", err.Error())
-		}
-
 		config.SecretKey = secretKey
 	}
 

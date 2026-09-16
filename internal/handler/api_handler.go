@@ -20,7 +20,7 @@ func (router *URLShortenerRouter) setAPIHandlers() {
 			r.Post("/", router.apiPostURL)
 			r.Post("/batch", router.apiPostURLBatch)
 		})
-		r.Get("/user/URLs", router.apiGetUserURLs)
+		r.Get("/user/urls", router.apiGetUserURLs)
 	})
 }
 

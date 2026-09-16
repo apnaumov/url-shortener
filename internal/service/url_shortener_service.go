@@ -60,11 +60,20 @@ func (shortenerService *URLShortenerService) GetFullURL(ctx context.Context, sho
 }
 
 func (shortenerService *URLShortenerService) GetUserURLsL(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error) {
-	v, err := shortenerService.shortenerURLs.GetUserURLs(ctx, userID)
+	results, err := shortenerService.shortenerURLs.GetUserURLs(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	return v, nil
+
+	for i := range results {
+		resShortURL, err := url.JoinPath(shortenerService.URLBaseAddr, results[i].ShortURL)
+		if err != nil {
+			return nil, err
+		}
+		results[i].ShortURL = resShortURL
+	}
+
+	return results, nil
 }
 
 func (shortenerService *URLShortenerService) SetFullURL(ctx context.Context, URLData model.RequestURLData) (model.ResponcePostURLData, error) {

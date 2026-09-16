@@ -51,7 +51,7 @@ func (shortenerService *URLShortenerService) OnServerShutdown() error {
 func (shortenerService *URLShortenerService) GetFullURL(ctx context.Context, shortURL string) (string, error) {
 	v, err := shortenerService.shortenerURLs.GetFullURL(ctx, shortURL)
 	if err != nil {
-		if errors.Is(err, repository.NotFoundError) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return "", fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
 		}
 		return "", err
@@ -79,9 +79,9 @@ func (shortenerService *URLShortenerService) SetFullURL(ctx context.Context, URL
 		resp, err := shortenerService.shortenerURLs.SetURL(ctx, URLRecord)
 
 		if err != nil {
-			if errors.Is(err, repository.FullURLCollisionError) {
-				collisionErr = repository.FullURLCollisionError
-			} else if errors.Is(err, repository.ShortURLCollisionError) {
+			if errors.Is(err, repository.ErrFullURLCollision) {
+				collisionErr = repository.ErrFullURLCollision
+			} else if errors.Is(err, repository.ErrShortURLCollision) {
 				shortenerService.logger.Debug("Can't generate short key because of collision.", zap.String("short key", shortURL))
 				continue
 			} else {
@@ -126,8 +126,8 @@ func (shortenerService *URLShortenerService) SetFullURLBatch(ctx context.Context
 		responseDataBatch = append(responseDataBatch, currentRespData...)
 
 		if err != nil {
-			if errors.Is(err, repository.FullURLCollisionError) {
-				collisionErr = repository.FullURLCollisionError
+			if errors.Is(err, repository.ErrFullURLCollision) {
+				collisionErr = repository.ErrFullURLCollision
 			} else {
 				return nil, err
 			}
@@ -141,7 +141,7 @@ func (shortenerService *URLShortenerService) SetFullURLBatch(ctx context.Context
 	}
 
 	if attemptsToGenKeys == maxAttemptsToGenerateKey {
-		return nil, repository.ShortURLCollisionError
+		return nil, repository.ErrShortURLCollision
 	}
 
 	for i := range responseDataBatch {

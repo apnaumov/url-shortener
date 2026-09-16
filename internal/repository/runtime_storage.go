@@ -43,7 +43,7 @@ func (storage *RuntimeStorage) GetFullURL(ctx context.Context, shortURL string) 
 	data, ok := storage.container.Get(shortURL)
 
 	if !ok {
-		return "", NotFoundError
+		return "", ErrNotFound
 	}
 	return data.OriginalURL, nil
 }
@@ -78,17 +78,17 @@ func (storage *RuntimeStorage) setURLImpl(URLRecord model.URLRecord) (model.Resp
 	if ok {
 		requestData, ok := storage.container.Get(existingShortURL)
 		if !ok {
-			panic(NotFoundError)
+			panic(ErrNotFound)
 		}
 
-		return model.ResponcePostURLData{ShortURL: existingShortURL, CorrelationID: requestData.CorrelationID}, FullURLCollisionError
+		return model.ResponcePostURLData{ShortURL: existingShortURL, CorrelationID: requestData.CorrelationID}, ErrFullURLCollision
 	}
 
 	ok = storage.container.Set(URLRecord.ShortURL, URLRecord.URLData)
 	okToServiceContainer := storage.uniqueOriginalURLs.Set(URLRecord.URLData.OriginalURL, URLRecord.ShortURL)
 
 	if !ok || !okToServiceContainer {
-		return model.ResponcePostURLData{}, ShortURLCollisionError
+		return model.ResponcePostURLData{}, ErrShortURLCollision
 	}
 
 	return model.ResponcePostURLData{ShortURL: URLRecord.ShortURL, CorrelationID: URLRecord.URLData.CorrelationID}, nil
@@ -106,9 +106,9 @@ func (storage *RuntimeStorage) SetURLBatch(ctx context.Context, URLRecords []mod
 		responseData, err := storage.setURLImpl(URLRecords[i])
 
 		if err != nil {
-			if errors.Is(err, FullURLCollisionError) {
-				collisionErr = FullURLCollisionError
-			} else if errors.Is(err, ShortURLCollisionError) {
+			if errors.Is(err, ErrFullURLCollision) {
+				collisionErr = ErrFullURLCollision
+			} else if errors.Is(err, ErrShortURLCollision) {
 				unacceptedURLRecords = append(unacceptedURLRecords, URLRecords[i])
 				continue
 			} else {
@@ -152,7 +152,7 @@ func (storage *RuntimeStorage) loadFromFile() error {
 	storage.currentUserID.Store(fileData.CurrentUserID)
 	for i := range fileData.URLRecords {
 		if ok := storage.container.Set(fileData.URLRecords[i].ShortURL, fileData.URLRecords[i].URLData); !ok {
-			return FullURLCollisionError
+			return ErrFullURLCollision
 		}
 	}
 

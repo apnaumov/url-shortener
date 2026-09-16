@@ -98,8 +98,8 @@ func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Requ
 	var res model.ResultShortenURL
 
 	if err != nil {
-		if errors.Is(err, repository.FullURLCollisionError) {
-			router.requestLogger.Warn(repository.FullURLCollisionError.Error(),
+		if errors.Is(err, repository.ErrFullURLCollision) {
+			router.requestLogger.Warn(repository.ErrFullURLCollision.Error(),
 				zap.String("short_URL", responseData.ShortURL), zap.String("correlation_id", responseData.CorrelationID))
 			status = http.StatusConflict
 			res = model.ResultShortenURL{Result: responseData.ShortURL}
@@ -166,8 +166,8 @@ func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http
 
 	var status int
 	if err != nil {
-		if errors.Is(err, repository.FullURLCollisionError) {
-			router.requestLogger.Warn(repository.FullURLCollisionError.Error(), zap.Int("batch size", len(responseDataBatch)))
+		if errors.Is(err, repository.ErrFullURLCollision) {
+			router.requestLogger.Warn(repository.ErrFullURLCollision.Error(), zap.Int("batch size", len(responseDataBatch)))
 			status = http.StatusConflict
 		} else {
 			router.requestLogger.Error(err.Error())

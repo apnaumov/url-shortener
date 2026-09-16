@@ -44,7 +44,7 @@ func (storage *DBStorage) GetFullURL(ctx context.Context, shortURL string) (stri
 	err := row.Scan(&fullURL)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", NotFoundError
+			return "", ErrNotFound
 		}
 		return "", err
 	}
@@ -119,9 +119,9 @@ func (storage *DBStorage) SetURLBatch(ctx context.Context, URLRecords []model.UR
 		responseData, err := storage.setURLImpl(ctx, tx, URLRecords[i])
 
 		if err != nil {
-			if errors.Is(err, FullURLCollisionError) {
-				collisionErr = FullURLCollisionError
-			} else if errors.Is(err, ShortURLCollisionError) {
+			if errors.Is(err, ErrFullURLCollision) {
+				collisionErr = ErrFullURLCollision
+			} else if errors.Is(err, ErrShortURLCollision) {
 				unacceptedURLRecords = append(unacceptedURLRecords, URLRecords[i])
 				continue
 			} else {
@@ -148,19 +148,19 @@ func (storage *DBStorage) setURLImpl(ctx context.Context, tx *sql.Tx, URLRecord 
 		return model.ResponcePostURLData{}, err
 	}
 	if shortURLCollision {
-		return model.ResponcePostURLData{}, ShortURLCollisionError
+		return model.ResponcePostURLData{}, ErrShortURLCollision
 	}
 
 	var shortURL string
-	var correlationId string
+	var correlationID string
 	row = tx.QueryRowContext(ctx, setFullURLQuery, URLRecord.ShortURL, URLRecord.URLData.OriginalURL, URLRecord.URLData.CorrelationID, URLRecord.URLData.UserID)
-	err = row.Scan(&shortURL, &correlationId)
+	err = row.Scan(&shortURL, &correlationID)
 	if err != nil {
 		return model.ResponcePostURLData{}, err
 	}
 
 	if URLRecord.ShortURL != shortURL {
-		return model.ResponcePostURLData{ShortURL: shortURL, CorrelationID: correlationId}, FullURLCollisionError
+		return model.ResponcePostURLData{ShortURL: shortURL, CorrelationID: correlationID}, ErrFullURLCollision
 	}
 
 	return model.ResponcePostURLData{ShortURL: URLRecord.ShortURL, CorrelationID: URLRecord.URLData.CorrelationID}, nil

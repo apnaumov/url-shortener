@@ -20,7 +20,7 @@ type URLStorage interface {
 type UnacceptedURLRecords []model.URLRecord
 
 var (
-	ShortURLCollisionError = errors.New("storage already have this short_URL")
-	NotFoundError          = errors.New("can't find record")
-	FullURLCollisionError  = errors.New("storage already have this URL(s)")
+	ErrShortURLCollision = errors.New("storage already have this short_URL")
+	ErrNotFound          = errors.New("can't find record")
+	ErrFullURLCollision  = errors.New("storage already have this URL(s)")
 )

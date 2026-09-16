@@ -99,8 +99,8 @@ func (router *URLShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	var status int
 
 	if err != nil {
-		if errors.Is(err, repository.FullURLCollisionError) {
-			router.requestLogger.Warn(repository.FullURLCollisionError.Error(),
+		if errors.Is(err, repository.ErrFullURLCollision) {
+			router.requestLogger.Warn(repository.ErrFullURLCollision.Error(),
 				zap.String("short_URL", responseData.ShortURL), zap.String("correlation_id", responseData.CorrelationID))
 			status = http.StatusConflict
 		} else {
@@ -122,7 +122,7 @@ func (router *URLShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 	shortPath := chi.URLParam(r, "shortPath")
 	URLData, err := router.service.GetFullURL(r.Context(), shortPath)
 	if err != nil {
-		if errors.Is(err, repository.NotFoundError) {
+		if errors.Is(err, repository.ErrNotFound) {
 			router.requestLogger.Warn(err.Error())
 			http.Error(w, "Invalid URL in request", http.StatusBadRequest)
 		} else {

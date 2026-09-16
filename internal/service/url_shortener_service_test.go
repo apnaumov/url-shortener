@@ -27,7 +27,7 @@ func TestRuntimeUsage(t *testing.T) {
 
 	URLData, err := serv.GetFullURL(ctx, "asd")
 	assert.Empty(t, URLData)
-	assert.ErrorIs(t, err, repository.NotFoundError)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
 
 	responseData, err := serv.SetFullURL(ctx, model.RequestURLData{OriginalURL: "asd"})
 	require.NoError(t, err)

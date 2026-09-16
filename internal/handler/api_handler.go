@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (router *URLShortenerRouter) setApiHandlers() {
+func (router *URLShortenerRouter) setAPIHandlers() {
 	router.Mux.Route("/api", func(r chi.Router) {
 		r.Route("/shorten", func(r chi.Router) {
 			r.Post("/", router.apiPostURL)
@@ -100,7 +100,7 @@ func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		if errors.Is(err, repository.FullURLCollisionError) {
 			router.requestLogger.Warn(repository.FullURLCollisionError.Error(),
-				zap.String("short_URL", responseData.ShortURL), zap.String("correlation_id", responseData.CorrelationId))
+				zap.String("short_URL", responseData.ShortURL), zap.String("correlation_id", responseData.CorrelationID))
 			status = http.StatusConflict
 			res = model.ResultShortenURL{Result: responseData.ShortURL}
 		} else {
@@ -151,7 +151,7 @@ func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http
 	}
 
 	for i := range requestDataBatch {
-		if len(requestDataBatch[i].CorrelationId) == 0 || len(requestDataBatch[i].OriginalURL) == 0 {
+		if len(requestDataBatch[i].CorrelationID) == 0 || len(requestDataBatch[i].OriginalURL) == 0 {
 			http.Error(w, "URL data must be not empty", http.StatusBadRequest)
 			return
 		}

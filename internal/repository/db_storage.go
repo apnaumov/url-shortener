@@ -18,7 +18,7 @@ type DBStorage struct {
 	db *sql.DB
 }
 
-func NewDbStorage(connStr string) (*DBStorage, error) {
+func NewDBStorage(connStr string) (*DBStorage, error) {
 	err := runMigrations(connStr)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (storage *DBStorage) GetUserURLs(ctx context.Context, userID uint64) ([]mod
 
 	defer rows.Close()
 
-	usersURLData := make([]model.ResponceUserURLData, 0, 0)
+	usersURLData := make([]model.ResponceUserURLData, 0)
 
 	for rows.Next() {
 		var (
@@ -153,17 +153,17 @@ func (storage *DBStorage) setURLImpl(ctx context.Context, tx *sql.Tx, URLRecord 
 
 	var shortURL string
 	var correlationId string
-	row = tx.QueryRowContext(ctx, setFullURLQuery, URLRecord.ShortURL, URLRecord.URLData.OriginalURL, URLRecord.URLData.CorrelationId, URLRecord.URLData.UserID)
+	row = tx.QueryRowContext(ctx, setFullURLQuery, URLRecord.ShortURL, URLRecord.URLData.OriginalURL, URLRecord.URLData.CorrelationID, URLRecord.URLData.UserID)
 	err = row.Scan(&shortURL, &correlationId)
 	if err != nil {
 		return model.ResponcePostURLData{}, err
 	}
 
 	if URLRecord.ShortURL != shortURL {
-		return model.ResponcePostURLData{ShortURL: shortURL, CorrelationId: correlationId}, FullURLCollisionError
+		return model.ResponcePostURLData{ShortURL: shortURL, CorrelationID: correlationId}, FullURLCollisionError
 	}
 
-	return model.ResponcePostURLData{ShortURL: URLRecord.ShortURL, CorrelationId: URLRecord.URLData.CorrelationId}, nil
+	return model.ResponcePostURLData{ShortURL: URLRecord.ShortURL, CorrelationID: URLRecord.URLData.CorrelationID}, nil
 }
 
 func (storage *DBStorage) OnServerShutdown() error {

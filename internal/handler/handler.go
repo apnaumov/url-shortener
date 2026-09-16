@@ -50,7 +50,7 @@ func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage reposi
 	URLShortenerRouter.Mux.Get("/{shortPath}", URLShortenerRouter.getFullURL)
 	URLShortenerRouter.Mux.Get("/ping", URLShortenerRouter.pingDB)
 	URLShortenerRouter.Mux.MethodNotAllowed(URLShortenerRouter.methodNotAllowed)
-	URLShortenerRouter.setApiHandlers()
+	URLShortenerRouter.setAPIHandlers()
 
 	return URLShortenerRouter, nil
 }
@@ -101,7 +101,7 @@ func (router *URLShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		if errors.Is(err, repository.FullURLCollisionError) {
 			router.requestLogger.Warn(repository.FullURLCollisionError.Error(),
-				zap.String("short_URL", responseData.ShortURL), zap.String("correlation_id", responseData.CorrelationId))
+				zap.String("short_URL", responseData.ShortURL), zap.String("correlation_id", responseData.CorrelationID))
 			status = http.StatusConflict
 		} else {
 			router.requestLogger.Error(err.Error())

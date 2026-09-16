@@ -48,7 +48,7 @@ func TestUsageWithFileData(t *testing.T) {
 	const serverBaseURL = "http://localhost:8080"
 
 	testData := model.URLDataToSaveToFile{
-		CurrentuserID: 0,
+		CurrentUserID: 0,
 		URLRecords: []model.URLRecord{
 			{ShortURL: "jhwGRw", URLData: model.RequestURLData{OriginalURL: "asdasdasddsa"}},
 			{ShortURL: "tk7Zla", URLData: model.RequestURLData{OriginalURL: "daberq"}},

@@ -11,7 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-const TOKEN_EXP = time.Hour * 24 * 7
+const TokenExp = time.Hour * 24 * 7
 
 func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler {
 	authLogger := router.requestLogger.Named("Authentification")
@@ -64,7 +64,7 @@ func (router *URLShortenerRouter) buildJWTString(ctx context.Context) (model.Cla
 
 	claims := model.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKEN_EXP)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExp)),
 		},
 		UserID: userID,
 	}

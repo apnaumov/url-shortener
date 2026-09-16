@@ -27,6 +27,10 @@ func NewURLShortenerService(URLBaseAddr string, URLStorage repository.URLStorage
 
 	shortenerLogger, err := logger.InitializeRootLogger("shortener_service", "info")
 
+	if err != nil {
+		return nil, err
+	}
+
 	URLShortenerService := &URLShortenerService{
 		URLBaseAddr:   URL.String(),
 		shortenerURLs: URLStorage,

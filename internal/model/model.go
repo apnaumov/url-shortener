@@ -19,13 +19,13 @@ type URLRecord struct {
 
 type RequestURLData struct {
 	OriginalURL   string `json:"original_URL"`
-	CorrelationId string `json:"correlation_id"`
+	CorrelationID string `json:"correlation_id"`
 	UserID        uint64 `json:"user_id"`
 }
 
 type ResponcePostURLData struct {
 	ShortURL      string `json:"short_URL"`
-	CorrelationId string `json:"correlation_id"`
+	CorrelationID string `json:"correlation_id"`
 }
 
 type ResponceUserURLData struct {
@@ -39,6 +39,6 @@ type Claims struct {
 }
 
 type URLDataToSaveToFile struct {
-	CurrentuserID uint64      `json:"current_user_id"`
+	CurrentUserID uint64      `json:"current_user_id"`
 	URLRecords    []URLRecord `json:"URL_records"`
 }

@@ -1,4 +1,4 @@
-package URLshortener
+package urlshortener
 
 import "embed"
 

@@ -45,7 +45,7 @@ func (c *compressWriter) Close() error {
 	return nil
 }
 
-func (cw *compressWriter) shouldCompress(contentType string) bool {
+func (c *compressWriter) shouldCompress(contentType string) bool {
 	compressibleTypes := []string{
 		"application/json",
 		"text/html",

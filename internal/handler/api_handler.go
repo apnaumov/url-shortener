@@ -20,7 +20,41 @@ func (router *UrlShortenerRouter) setApiHandlers() {
 			r.Post("/", router.apiPostUrl)
 			r.Post("/batch", router.apiPostUrlBatch)
 		})
+		r.Get("/user/urls", router.apiGetUserUrls)
 	})
+}
+
+func (router *UrlShortenerRouter) apiGetUserUrls(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	userId, err := getUserIdFromCtx(r.Context())
+	if err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	responseData, err := router.service.GetUserUrlsL(ctx, userId)
+	if err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if len(responseData) == 0 {
+		http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(responseData); err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +85,14 @@ func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: postURL.URL})
+	userId, err := getUserIdFromCtx(r.Context())
+	if err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: postURL.URL, UserId: userId})
 
 	var status int
 	var res model.ResultShortenURL
@@ -91,6 +132,13 @@ func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http
 
 	var requestDataBatch []model.RequestURLData
 
+	userId, err := getUserIdFromCtx(r.Context())
+	if err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&requestDataBatch); err != nil {
 		router.requestLogger.Error(err.Error())
 		if errors.Is(err, io.EOF) {
@@ -107,6 +155,8 @@ func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http
 			http.Error(w, "URL data must be not empty", http.StatusBadRequest)
 			return
 		}
+
+		requestDataBatch[i].UserId = userId
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)

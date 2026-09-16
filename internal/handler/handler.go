@@ -18,10 +18,11 @@ import (
 type UrlShortenerRouter struct {
 	Mux           *chi.Mux
 	service       *service.UrlShortenerService
+	authKey       []byte
 	requestLogger *zap.Logger
 }
 
-func NewUrlShortenerRouter(urlBaseAddr string, urlStorage repository.UrlStorage) (*UrlShortenerRouter, error) {
+func NewUrlShortenerRouter(urlBaseAddr string, authKey []byte, urlStorage repository.UrlStorage) (*UrlShortenerRouter, error) {
 	urlShortenerRouter := &UrlShortenerRouter{}
 	urlShortenerRouter.Mux = chi.NewRouter()
 
@@ -40,8 +41,10 @@ func NewUrlShortenerRouter(urlBaseAddr string, urlStorage repository.UrlStorage)
 	}
 
 	urlShortenerRouter.service = shortener
+	urlShortenerRouter.authKey = authKey
 
 	urlShortenerRouter.Mux.Use(urlShortenerRouter.getLoggerMiddleware)
+	urlShortenerRouter.Mux.Use(urlShortenerRouter.getAuthMiddleware)
 	urlShortenerRouter.Mux.Use(urlShortenerRouter.gzipMiddleware)
 	urlShortenerRouter.Mux.Post("/", urlShortenerRouter.postNewURL)
 	urlShortenerRouter.Mux.Get("/{shortPath}", urlShortenerRouter.getFullURL)
@@ -85,7 +88,14 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body)})
+	userId, err := getUserIdFromCtx(r.Context())
+	if err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body), UserId: userId})
 	var status int
 
 	if err != nil {
@@ -123,7 +133,7 @@ func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	w.Header().Set("Location", urlData.OriginalURL)
+	w.Header().Set("Location", urlData)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 

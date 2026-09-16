@@ -44,20 +44,28 @@ func (shortenerService *UrlShortenerService) OnServerShutdown() error {
 	return shortenerService.shortenerUrls.OnServerShutdown()
 }
 
-func (shortenerService *UrlShortenerService) GetFullURL(ctx context.Context, shortURL string) (model.RequestURLData, error) {
+func (shortenerService *UrlShortenerService) GetFullURL(ctx context.Context, shortURL string) (string, error) {
 	v, err := shortenerService.shortenerUrls.GetFullUrl(ctx, shortURL)
 	if err != nil {
 		if errors.Is(err, repository.NotFoundError) {
-			return model.RequestURLData{}, fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
+			return "", fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
 		}
-		return model.RequestURLData{}, err
+		return "", err
 	}
 	return v, nil
 }
 
-func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, urlData model.RequestURLData) (model.ResponceURLData, error) {
+func (shortenerService *UrlShortenerService) GetUserUrlsL(ctx context.Context, userId uint64) ([]model.ResponceUserURLData, error) {
+	v, err := shortenerService.shortenerUrls.GetUserUrls(ctx, userId)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, urlData model.RequestURLData) (model.ResponcePostURLData, error) {
 	const maxAttemptsToGenerateKey = 10
-	var responseData model.ResponceURLData
+	var responseData model.ResponcePostURLData
 	var collisionErr error = nil
 	for range maxAttemptsToGenerateKey {
 		shortURL := generateShortKey()
@@ -73,7 +81,7 @@ func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, url
 				shortenerService.logger.Debug("Can't generate short key because of collision.", zap.String("short key", shortURL))
 				continue
 			} else {
-				return model.ResponceURLData{}, err
+				return model.ResponcePostURLData{}, err
 			}
 		}
 		responseData = resp
@@ -82,16 +90,16 @@ func (shortenerService *UrlShortenerService) SetFullURL(ctx context.Context, url
 
 	resShortUrl, err := url.JoinPath(shortenerService.urlBaseAddr, responseData.ShortUrl)
 	if err != nil {
-		return model.ResponceURLData{}, err
+		return model.ResponcePostURLData{}, err
 	}
 	responseData.ShortUrl = resShortUrl
 
 	return responseData, collisionErr
 }
 
-func (shortenerService *UrlShortenerService) SetFullURLBatch(ctx context.Context, urlDatas []model.RequestURLData) ([]model.ResponceURLData, error) {
+func (shortenerService *UrlShortenerService) SetFullURLBatch(ctx context.Context, urlDatas []model.RequestURLData) ([]model.ResponcePostURLData, error) {
 	const maxAttemptsToGenerateKey = 10
-	responseDataBatch := make([]model.ResponceURLData, 0, len(urlDatas))
+	responseDataBatch := make([]model.ResponcePostURLData, 0, len(urlDatas))
 	var collisionErr error = nil
 
 	attemptsToGenKeys := 0

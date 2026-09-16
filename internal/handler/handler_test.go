@@ -21,7 +21,7 @@ func setUpServer(t *testing.T) *httptest.Server {
 	storage, err := repository.NewRuntimeStorage("")
 	require.NoError(t, err)
 
-	router, err := NewUrlShortenerRouter("http://"+ts.Listener.Addr().String(), storage)
+	router, err := NewUrlShortenerRouter("http://"+ts.Listener.Addr().String(), []byte("mysupersecretkey"), storage)
 	require.NoError(t, err)
 	ts.Config.Handler = router.Mux
 

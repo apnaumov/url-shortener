@@ -26,7 +26,7 @@ func TestRuntimeUsage(t *testing.T) {
 	defer cancel()
 
 	urlData, err := serv.GetFullURL(ctx, "asd")
-	assert.Empty(t, urlData.OriginalURL)
+	assert.Empty(t, urlData)
 	assert.ErrorIs(t, err, repository.NotFoundError)
 
 	responseData, err := serv.SetFullURL(ctx, model.RequestURLData{OriginalURL: "asd"})
@@ -38,7 +38,7 @@ func TestRuntimeUsage(t *testing.T) {
 
 	urlData, err = serv.GetFullURL(ctx, strings.ReplaceAll(url.Path, "/", ""))
 	assert.NoError(t, err)
-	assert.Equal(t, "asd", urlData.OriginalURL)
+	assert.Equal(t, "asd", urlData)
 }
 
 func TestUsageWithFileData(t *testing.T) {

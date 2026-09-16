@@ -36,34 +36,57 @@ func NewDbStorage(connStr string) (*DbStorage, error) {
 	return dbStorage, nil
 }
 
-func (storage *DbStorage) GetFullUrl(ctx context.Context, shortUrl string) (model.RequestURLData, error) {
+func (storage *DbStorage) GetFullUrl(ctx context.Context, shortUrl string) (string, error) {
 	row := storage.db.QueryRowContext(ctx, getFullUrlQuery, shortUrl)
 
-	var (
-		fullUrl       string
-		correlationId sql.NullString
-	)
+	var fullUrl string
 
-	err := row.Scan(&fullUrl, &correlationId)
+	err := row.Scan(&fullUrl)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return model.RequestURLData{}, NotFoundError
+			return "", NotFoundError
 		}
-		return model.RequestURLData{}, err
+		return "", err
 	}
 
-	urlData := model.RequestURLData{OriginalURL: fullUrl}
-	if correlationId.Valid {
-		urlData.CorrelationId = correlationId.String
-	}
-
-	return urlData, nil
+	return fullUrl, nil
 }
 
-func (storage *DbStorage) SetUrl(ctx context.Context, urlRecord model.URLRecord) (model.ResponceURLData, error) {
+func (storage *DbStorage) GetUserUrls(ctx context.Context, userId uint64) ([]model.ResponceUserURLData, error) {
+	rows, err := storage.db.QueryContext(ctx, getUserUrls, userId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	usersUrlData := make([]model.ResponceUserURLData, 0, 0)
+
+	for rows.Next() {
+		var (
+			shortUrl string
+			fullUrl  string
+		)
+		err = rows.Scan(&shortUrl, &fullUrl)
+		if err != nil {
+			return nil, err
+		}
+
+		usersUrlData = append(usersUrlData, model.ResponceUserURLData{ShortUrl: shortUrl, OriginalURL: fullUrl})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return usersUrlData, nil
+}
+
+func (storage *DbStorage) SetUrl(ctx context.Context, urlRecord model.URLRecord) (model.ResponcePostURLData, error) {
 	tx, err := storage.db.Begin()
 	if err != nil {
-		return model.ResponceURLData{}, err
+		return model.ResponcePostURLData{}, err
 	}
 
 	defer tx.Rollback()
@@ -73,13 +96,13 @@ func (storage *DbStorage) SetUrl(ctx context.Context, urlRecord model.URLRecord)
 	txErr := tx.Commit()
 
 	if txErr != nil {
-		return model.ResponceURLData{}, err
+		return model.ResponcePostURLData{}, err
 	}
 
 	return responseData, err
 }
 
-func (storage *DbStorage) SetUrlBatch(ctx context.Context, urlRecords []model.URLRecord) ([]model.ResponceURLData, UnacceptedUrlRecords, error) {
+func (storage *DbStorage) SetUrlBatch(ctx context.Context, urlRecords []model.URLRecord) ([]model.ResponcePostURLData, UnacceptedUrlRecords, error) {
 	tx, err := storage.db.Begin()
 	if err != nil {
 		return nil, nil, err
@@ -89,8 +112,8 @@ func (storage *DbStorage) SetUrlBatch(ctx context.Context, urlRecords []model.UR
 
 	defer tx.Rollback()
 
-	responseUrlDataBatch := make([]model.ResponceURLData, 0, len(urlRecords))
-	unacceptedUrlRecords := make(UnacceptedUrlRecords, 0, 0)
+	responseUrlDataBatch := make([]model.ResponcePostURLData, 0, len(urlRecords))
+	unacceptedUrlRecords := make(UnacceptedUrlRecords, 0)
 
 	for i := range urlRecords {
 		responseData, err := storage.setUrlImpl(ctx, tx, urlRecords[i])
@@ -117,30 +140,30 @@ func (storage *DbStorage) SetUrlBatch(ctx context.Context, urlRecords []model.UR
 	return responseUrlDataBatch, unacceptedUrlRecords, collisionErr
 }
 
-func (storage *DbStorage) setUrlImpl(ctx context.Context, tx *sql.Tx, urlRecord model.URLRecord) (model.ResponceURLData, error) {
+func (storage *DbStorage) setUrlImpl(ctx context.Context, tx *sql.Tx, urlRecord model.URLRecord) (model.ResponcePostURLData, error) {
 	shortUrlCollision := false
 	row := tx.QueryRowContext(ctx, checkCollisionUrl, urlRecord.ShortURL)
 	err := row.Scan(&shortUrlCollision)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return model.ResponceURLData{}, err
+		return model.ResponcePostURLData{}, err
 	}
 	if shortUrlCollision {
-		return model.ResponceURLData{}, ShortUrlCollisionError
+		return model.ResponcePostURLData{}, ShortUrlCollisionError
 	}
 
 	var shortUrl string
 	var correlationId string
-	row = tx.QueryRowContext(ctx, setFullUrlQuery, urlRecord.ShortURL, urlRecord.UrlData.OriginalURL, urlRecord.UrlData.CorrelationId)
+	row = tx.QueryRowContext(ctx, setFullUrlQuery, urlRecord.ShortURL, urlRecord.UrlData.OriginalURL, urlRecord.UrlData.CorrelationId, urlRecord.UrlData.UserId)
 	err = row.Scan(&shortUrl, &correlationId)
 	if err != nil {
-		return model.ResponceURLData{}, err
+		return model.ResponcePostURLData{}, err
 	}
 
 	if urlRecord.ShortURL != shortUrl {
-		return model.ResponceURLData{ShortUrl: shortUrl, CorrelationId: correlationId}, FullUrlCollisionError
+		return model.ResponcePostURLData{ShortUrl: shortUrl, CorrelationId: correlationId}, FullUrlCollisionError
 	}
 
-	return model.ResponceURLData{ShortUrl: urlRecord.ShortURL, CorrelationId: urlRecord.UrlData.CorrelationId}, nil
+	return model.ResponcePostURLData{ShortUrl: urlRecord.ShortURL, CorrelationId: urlRecord.UrlData.CorrelationId}, nil
 }
 
 func (storage *DbStorage) OnServerShutdown() error {
@@ -149,6 +172,18 @@ func (storage *DbStorage) OnServerShutdown() error {
 
 func (storage *DbStorage) Ping(ctx context.Context) error {
 	return storage.db.PingContext(ctx)
+}
+
+func (storage *DbStorage) CreateNewUser(ctx context.Context) (uint64, error) {
+	var userId uint64
+
+	row := storage.db.QueryRowContext(ctx, insertNewUserId)
+	err := row.Scan(&userId)
+	if err != nil {
+		return 0, err
+	}
+
+	return userId, nil
 }
 
 func runMigrations(connStr string) error {

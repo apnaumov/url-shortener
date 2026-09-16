@@ -15,16 +15,16 @@ import (
 	"go.uber.org/zap"
 )
 
-type UrlShortenerRouter struct {
+type URLShortenerRouter struct {
 	Mux           *chi.Mux
-	service       *service.UrlShortenerService
+	service       *service.URLShortenerService
 	authKey       []byte
 	requestLogger *zap.Logger
 }
 
-func NewUrlShortenerRouter(urlBaseAddr string, authKey []byte, urlStorage repository.UrlStorage) (*UrlShortenerRouter, error) {
-	urlShortenerRouter := &UrlShortenerRouter{}
-	urlShortenerRouter.Mux = chi.NewRouter()
+func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage repository.URLStorage) (*URLShortenerRouter, error) {
+	URLShortenerRouter := &URLShortenerRouter{}
+	URLShortenerRouter.Mux = chi.NewRouter()
 
 	requestLogger, err := logger.InitializeRootLogger("server_requests", "info")
 
@@ -32,30 +32,30 @@ func NewUrlShortenerRouter(urlBaseAddr string, authKey []byte, urlStorage reposi
 		return nil, err
 	}
 
-	urlShortenerRouter.requestLogger = requestLogger
+	URLShortenerRouter.requestLogger = requestLogger
 
-	shortener, err := service.NewUrlShortenerService(urlBaseAddr, urlStorage)
+	shortener, err := service.NewURLShortenerService(URLBaseAddr, URLStorage)
 
 	if err != nil {
 		return nil, err
 	}
 
-	urlShortenerRouter.service = shortener
-	urlShortenerRouter.authKey = authKey
+	URLShortenerRouter.service = shortener
+	URLShortenerRouter.authKey = authKey
 
-	urlShortenerRouter.Mux.Use(urlShortenerRouter.getLoggerMiddleware)
-	urlShortenerRouter.Mux.Use(urlShortenerRouter.getAuthMiddleware)
-	urlShortenerRouter.Mux.Use(urlShortenerRouter.gzipMiddleware)
-	urlShortenerRouter.Mux.Post("/", urlShortenerRouter.postNewURL)
-	urlShortenerRouter.Mux.Get("/{shortPath}", urlShortenerRouter.getFullURL)
-	urlShortenerRouter.Mux.Get("/ping", urlShortenerRouter.pingDb)
-	urlShortenerRouter.Mux.MethodNotAllowed(urlShortenerRouter.methodNotAllowed)
-	urlShortenerRouter.setApiHandlers()
+	URLShortenerRouter.Mux.Use(URLShortenerRouter.getLoggerMiddleware)
+	URLShortenerRouter.Mux.Use(URLShortenerRouter.getAuthMiddleware)
+	URLShortenerRouter.Mux.Use(URLShortenerRouter.gzipMiddleware)
+	URLShortenerRouter.Mux.Post("/", URLShortenerRouter.postNewURL)
+	URLShortenerRouter.Mux.Get("/{shortPath}", URLShortenerRouter.getFullURL)
+	URLShortenerRouter.Mux.Get("/ping", URLShortenerRouter.pingDB)
+	URLShortenerRouter.Mux.MethodNotAllowed(URLShortenerRouter.methodNotAllowed)
+	URLShortenerRouter.setApiHandlers()
 
-	return urlShortenerRouter, nil
+	return URLShortenerRouter, nil
 }
 
-func (router *UrlShortenerRouter) OnShutdown() {
+func (router *URLShortenerRouter) OnShutdown() {
 	if err := router.service.OnServerShutdown(); err != nil {
 		router.requestLogger.Warn("Error while save service's configuration on shutdown", zap.String("error", err.Error()))
 	} else {
@@ -63,11 +63,11 @@ func (router *UrlShortenerRouter) OnShutdown() {
 	}
 }
 
-func (router *UrlShortenerRouter) methodNotAllowed(w http.ResponseWriter, r *http.Request) {
+func (router *URLShortenerRouter) methodNotAllowed(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Method not allowed", http.StatusBadRequest)
 }
 
-func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Request) {
+func (router *URLShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "text/plain" {
 		http.Error(w, "Content-type incorrect", http.StatusBadRequest)
 		return
@@ -88,20 +88,20 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	userId, err := getUserIdFromCtx(r.Context())
+	userID, err := getUserIDFromCtx(r.Context())
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body), UserId: userId})
+	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body), UserID: userID})
 	var status int
 
 	if err != nil {
-		if errors.Is(err, repository.FullUrlCollisionError) {
-			router.requestLogger.Warn(repository.FullUrlCollisionError.Error(),
-				zap.String("short_url", responseData.ShortUrl), zap.String("correlation_id", responseData.CorrelationId))
+		if errors.Is(err, repository.FullURLCollisionError) {
+			router.requestLogger.Warn(repository.FullURLCollisionError.Error(),
+				zap.String("short_URL", responseData.ShortURL), zap.String("correlation_id", responseData.CorrelationId))
 			status = http.StatusConflict
 		} else {
 			router.requestLogger.Error(err.Error())
@@ -115,12 +115,12 @@ func (router *UrlShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(status)
 
-	w.Write([]byte(responseData.ShortUrl))
+	w.Write([]byte(responseData.ShortURL))
 }
 
-func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
+func (router *URLShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
 	shortPath := chi.URLParam(r, "shortPath")
-	urlData, err := router.service.GetFullURL(r.Context(), shortPath)
+	URLData, err := router.service.GetFullURL(r.Context(), shortPath)
 	if err != nil {
 		if errors.Is(err, repository.NotFoundError) {
 			router.requestLogger.Warn(err.Error())
@@ -133,11 +133,11 @@ func (router *UrlShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	w.Header().Set("Location", urlData)
+	w.Header().Set("Location", URLData)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func (router *UrlShortenerRouter) pingDb(w http.ResponseWriter, r *http.Request) {
+func (router *URLShortenerRouter) pingDB(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 

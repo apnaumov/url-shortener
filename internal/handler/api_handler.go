@@ -14,28 +14,28 @@ import (
 	"go.uber.org/zap"
 )
 
-func (router *UrlShortenerRouter) setApiHandlers() {
+func (router *URLShortenerRouter) setApiHandlers() {
 	router.Mux.Route("/api", func(r chi.Router) {
 		r.Route("/shorten", func(r chi.Router) {
-			r.Post("/", router.apiPostUrl)
-			r.Post("/batch", router.apiPostUrlBatch)
+			r.Post("/", router.apiPostURL)
+			r.Post("/batch", router.apiPostURLBatch)
 		})
-		r.Get("/user/urls", router.apiGetUserUrls)
+		r.Get("/user/URLs", router.apiGetUserURLs)
 	})
 }
 
-func (router *UrlShortenerRouter) apiGetUserUrls(w http.ResponseWriter, r *http.Request) {
+func (router *URLShortenerRouter) apiGetUserURLs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	userId, err := getUserIdFromCtx(r.Context())
+	userID, err := getUserIDFromCtx(r.Context())
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	responseData, err := router.service.GetUserUrlsL(ctx, userId)
+	responseData, err := router.service.GetUserURLsL(ctx, userID)
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -57,7 +57,7 @@ func (router *UrlShortenerRouter) apiGetUserUrls(w http.ResponseWriter, r *http.
 	}
 }
 
-func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Request) {
+func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-type incorrect", http.StatusBadRequest)
 		return
@@ -85,24 +85,24 @@ func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	userId, err := getUserIdFromCtx(r.Context())
+	userID, err := getUserIDFromCtx(r.Context())
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: postURL.URL, UserId: userId})
+	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: postURL.URL, UserID: userID})
 
 	var status int
 	var res model.ResultShortenURL
 
 	if err != nil {
-		if errors.Is(err, repository.FullUrlCollisionError) {
-			router.requestLogger.Warn(repository.FullUrlCollisionError.Error(),
-				zap.String("short_url", responseData.ShortUrl), zap.String("correlation_id", responseData.CorrelationId))
+		if errors.Is(err, repository.FullURLCollisionError) {
+			router.requestLogger.Warn(repository.FullURLCollisionError.Error(),
+				zap.String("short_URL", responseData.ShortURL), zap.String("correlation_id", responseData.CorrelationId))
 			status = http.StatusConflict
-			res = model.ResultShortenURL{Result: responseData.ShortUrl}
+			res = model.ResultShortenURL{Result: responseData.ShortURL}
 		} else {
 			router.requestLogger.Error(err.Error())
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -110,7 +110,7 @@ func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Requ
 		}
 	} else {
 		status = http.StatusCreated
-		res = model.ResultShortenURL{Result: responseData.ShortUrl}
+		res = model.ResultShortenURL{Result: responseData.ShortURL}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -123,7 +123,7 @@ func (router *UrlShortenerRouter) apiPostUrl(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http.Request) {
+func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-type incorrect", http.StatusBadRequest)
 		return
@@ -132,7 +132,7 @@ func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http
 
 	var requestDataBatch []model.RequestURLData
 
-	userId, err := getUserIdFromCtx(r.Context())
+	userID, err := getUserIDFromCtx(r.Context())
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -156,7 +156,7 @@ func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http
 			return
 		}
 
-		requestDataBatch[i].UserId = userId
+		requestDataBatch[i].UserID = userID
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -166,8 +166,8 @@ func (router *UrlShortenerRouter) apiPostUrlBatch(w http.ResponseWriter, r *http
 
 	var status int
 	if err != nil {
-		if errors.Is(err, repository.FullUrlCollisionError) {
-			router.requestLogger.Warn(repository.FullUrlCollisionError.Error(), zap.Int("batch size", len(responseDataBatch)))
+		if errors.Is(err, repository.FullURLCollisionError) {
+			router.requestLogger.Warn(repository.FullURLCollisionError.Error(), zap.Int("batch size", len(responseDataBatch)))
 			status = http.StatusConflict
 		} else {
 			router.requestLogger.Error(err.Error())

@@ -82,7 +82,7 @@ func (c *compressReader) Close() error {
 	return c.r.Close()
 }
 
-func (router *UrlShortenerRouter) gzipMiddleware(h http.Handler) http.Handler {
+func (router *URLShortenerRouter) gzipMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ow := w
 

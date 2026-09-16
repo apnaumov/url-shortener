@@ -13,12 +13,12 @@ import (
 
 const TOKEN_EXP = time.Hour * 24 * 7
 
-func (router *UrlShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler {
+func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler {
 	authLogger := router.requestLogger.Named("Authentification")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := r.Cookie("shortener_token")
-		var userId uint64
+		var userID uint64
 		if err != nil {
 			if !errors.Is(err, http.ErrNoCookie) {
 				authLogger.Error(err.Error())
@@ -31,7 +31,7 @@ func (router *UrlShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				return
 			}
-			userId = claims.UserID
+			userID = claims.UserID
 			http.SetCookie(w, &http.Cookie{Name: "shortener_token", Value: token, HttpOnly: true})
 		} else {
 			claims, err := router.parseJWTString(token.Value)
@@ -47,17 +47,17 @@ func (router *UrlShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler
 				return
 			}
 
-			userId = claims.UserID
+			userID = claims.UserID
 		}
 
-		ctx := context.WithValue(r.Context(), "user_id", userId)
+		ctx := context.WithValue(r.Context(), "user_id", userID)
 		h.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func (router *UrlShortenerRouter) buildJWTString(ctx context.Context) (model.Claims, string, error) {
+func (router *URLShortenerRouter) buildJWTString(ctx context.Context) (model.Claims, string, error) {
 
-	userId, err := router.service.GetStorage().CreateNewUser(ctx)
+	userID, err := router.service.GetStorage().CreateNewUser(ctx)
 	if err != nil {
 		return model.Claims{}, "", err
 	}
@@ -66,7 +66,7 @@ func (router *UrlShortenerRouter) buildJWTString(ctx context.Context) (model.Cla
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKEN_EXP)),
 		},
-		UserID: userId,
+		UserID: userID,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -79,7 +79,7 @@ func (router *UrlShortenerRouter) buildJWTString(ctx context.Context) (model.Cla
 	return claims, tokenString, nil
 }
 
-func (router *UrlShortenerRouter) parseJWTString(tokenString string) (model.Claims, error) {
+func (router *URLShortenerRouter) parseJWTString(tokenString string) (model.Claims, error) {
 	claims := model.Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, &claims,
 		func(t *jwt.Token) (interface{}, error) {
@@ -99,11 +99,11 @@ func (router *UrlShortenerRouter) parseJWTString(tokenString string) (model.Clai
 	return claims, nil
 }
 
-func getUserIdFromCtx(ctx context.Context) (uint64, error) {
-	rawUserId := ctx.Value("user_id")
+func getUserIDFromCtx(ctx context.Context) (uint64, error) {
+	rawuserID := ctx.Value("user_id")
 
-	if userId, ok := rawUserId.(uint64); ok {
-		return userId, nil
+	if userID, ok := rawuserID.(uint64); ok {
+		return userID, nil
 	} else {
 		return 0, fmt.Errorf("can't get user id from context")
 	}

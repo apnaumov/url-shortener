@@ -9,10 +9,10 @@ import (
 
 type Config struct {
 	ServerListenAddr   string
-	ServerBaseUrl      string
+	ServerBaseURL      string
 	FileStoragePath    string
 	LogDirectory       string
-	DbConnectionString string
+	DBConnectionString string
 	SecretKey          []byte
 }
 
@@ -35,18 +35,18 @@ func InitConfig() Config {
 
 func setConfigFromArgs(config *Config) {
 	const defaultListen = ":8080"
-	const defaultUrl = "http://localhost:8080"
+	const defaultURL = "http://localhost:8080"
 	const defaultFileStoragePath = ""
 	const defaultLogDirectory = ""
-	const defaultDbConnection = ""
+	const defaultDBConnection = ""
 
 	secretKey := ""
 
 	flag.StringVar(&config.ServerListenAddr, "a", defaultListen, `Address to run server. Default: ":8080"`)
-	flag.StringVar(&config.ServerBaseUrl, "b", defaultUrl, `Base address of the resulting shortened URL. Default: "http://localhost:8080"`)
+	flag.StringVar(&config.ServerBaseURL, "b", defaultURL, `Base address of the resulting shortened URL. Default: "http://localhost:8080"`)
 	flag.StringVar(&config.FileStoragePath, "f", defaultFileStoragePath, `File path to storage file. Default: ""`)
 	flag.StringVar(&config.LogDirectory, "l", defaultLogDirectory, `Log directory. Default puts messages to stdout`)
-	flag.StringVar(&config.DbConnectionString, "d", defaultDbConnection, `Database connection string. Default: ""`)
+	flag.StringVar(&config.DBConnectionString, "d", defaultDBConnection, `Database connection string. Default: ""`)
 	flag.StringVar(&secretKey, "k", "", `Secret key string. Default: ""`)
 	flag.Parse()
 
@@ -58,8 +58,8 @@ func setConfigFromEnv(config *Config) {
 		config.ServerListenAddr = listenAddr
 	}
 
-	if urlAddr, found := os.LookupEnv("BASE_URL"); found {
-		config.ServerBaseUrl = urlAddr
+	if URLAddr, found := os.LookupEnv("BASE_URL"); found {
+		config.ServerBaseURL = URLAddr
 	}
 
 	if storageFilePath, found := os.LookupEnv("FILE_STORAGE_PATH"); found {
@@ -71,7 +71,7 @@ func setConfigFromEnv(config *Config) {
 	}
 
 	if dbConnectionString, found := os.LookupEnv("DATABASE_DSN"); found {
-		config.DbConnectionString = dbConnectionString
+		config.DBConnectionString = dbConnectionString
 	}
 
 	if secretKeyString, found := os.LookupEnv("SHORTENER_SECRET_KEY"); found {

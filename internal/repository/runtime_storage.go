@@ -12,15 +12,15 @@ import (
 
 type RuntimeStorage struct {
 	container          *Container[model.RequestURLData]
-	uniqueOriginalUrls *Container[string]
-	currentUserId      atomic.Uint64
+	uniqueOriginalURLs *Container[string]
+	currentuserID      atomic.Uint64
 	fileStoragePath    string
 }
 
 func NewRuntimeStorage(fileStoragePath string) (*RuntimeStorage, error) {
 	storage := &RuntimeStorage{
 		container:          NewContainer[model.RequestURLData](),
-		uniqueOriginalUrls: NewContainer[string](),
+		uniqueOriginalURLs: NewContainer[string](),
 		fileStoragePath:    fileStoragePath,
 	}
 
@@ -34,12 +34,12 @@ func NewRuntimeStorage(fileStoragePath string) (*RuntimeStorage, error) {
 	return storage, nil
 }
 
-func (storage *RuntimeStorage) GetFullUrl(ctx context.Context, shortUrl string) (string, error) {
+func (storage *RuntimeStorage) GetFullURL(ctx context.Context, shortURL string) (string, error) {
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
 
-	data, ok := storage.container.Get(shortUrl)
+	data, ok := storage.container.Get(shortURL)
 
 	if !ok {
 		return "", NotFoundError
@@ -47,7 +47,7 @@ func (storage *RuntimeStorage) GetFullUrl(ctx context.Context, shortUrl string) 
 	return data.OriginalURL, nil
 }
 
-func (storage *RuntimeStorage) GetUserUrls(ctx context.Context, userId uint64) ([]model.ResponceUserURLData, error) {
+func (storage *RuntimeStorage) GetUserURLs(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -56,67 +56,67 @@ func (storage *RuntimeStorage) GetUserUrls(ctx context.Context, userId uint64) (
 
 	storageRecords := storage.container.GetAll()
 	for i, v := range storageRecords {
-		if v.UserId == userId {
-			userData = append(userData, model.ResponceUserURLData{ShortUrl: i, OriginalURL: v.OriginalURL})
+		if v.UserID == userID {
+			userData = append(userData, model.ResponceUserURLData{ShortURL: i, OriginalURL: v.OriginalURL})
 		}
 	}
 
 	return userData, nil
 }
 
-func (storage *RuntimeStorage) SetUrl(ctx context.Context, urlRecord model.URLRecord) (model.ResponcePostURLData, error) {
+func (storage *RuntimeStorage) SetURL(ctx context.Context, URLRecord model.URLRecord) (model.ResponcePostURLData, error) {
 	if ctx.Err() != nil {
 		return model.ResponcePostURLData{}, ctx.Err()
 	}
 
-	return storage.setUrlImpl(urlRecord)
+	return storage.setURLImpl(URLRecord)
 }
 
-func (storage *RuntimeStorage) setUrlImpl(urlRecord model.URLRecord) (model.ResponcePostURLData, error) {
-	existingShortUrl, ok := storage.uniqueOriginalUrls.Get(urlRecord.UrlData.OriginalURL)
+func (storage *RuntimeStorage) setURLImpl(URLRecord model.URLRecord) (model.ResponcePostURLData, error) {
+	existingShortURL, ok := storage.uniqueOriginalURLs.Get(URLRecord.URLData.OriginalURL)
 	if ok {
-		requestData, ok := storage.container.Get(existingShortUrl)
+		requestData, ok := storage.container.Get(existingShortURL)
 		if !ok {
 			panic(NotFoundError)
 		}
 
-		return model.ResponcePostURLData{ShortUrl: existingShortUrl, CorrelationId: requestData.CorrelationId}, FullUrlCollisionError
+		return model.ResponcePostURLData{ShortURL: existingShortURL, CorrelationId: requestData.CorrelationId}, FullURLCollisionError
 	}
 
-	ok = storage.container.Set(urlRecord.ShortURL, urlRecord.UrlData)
-	okToServiceContainer := storage.uniqueOriginalUrls.Set(urlRecord.UrlData.OriginalURL, urlRecord.ShortURL)
+	ok = storage.container.Set(URLRecord.ShortURL, URLRecord.URLData)
+	okToServiceContainer := storage.uniqueOriginalURLs.Set(URLRecord.URLData.OriginalURL, URLRecord.ShortURL)
 
 	if !ok || !okToServiceContainer {
-		return model.ResponcePostURLData{}, ShortUrlCollisionError
+		return model.ResponcePostURLData{}, ShortURLCollisionError
 	}
 
-	return model.ResponcePostURLData{ShortUrl: urlRecord.ShortURL, CorrelationId: urlRecord.UrlData.CorrelationId}, nil
+	return model.ResponcePostURLData{ShortURL: URLRecord.ShortURL, CorrelationId: URLRecord.URLData.CorrelationId}, nil
 }
 
-func (storage *RuntimeStorage) SetUrlBatch(ctx context.Context, urlRecords []model.URLRecord) ([]model.ResponcePostURLData, UnacceptedUrlRecords, error) {
+func (storage *RuntimeStorage) SetURLBatch(ctx context.Context, URLRecords []model.URLRecord) ([]model.ResponcePostURLData, UnacceptedURLRecords, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
-	unacceptedUrlRecords := make(UnacceptedUrlRecords, 0)
-	responseUrlDataBatch := make([]model.ResponcePostURLData, 0, len(urlRecords))
+	unacceptedURLRecords := make(UnacceptedURLRecords, 0)
+	responseURLDataBatch := make([]model.ResponcePostURLData, 0, len(URLRecords))
 	var collisionErr error = nil
 
-	for i := range urlRecords {
-		responseData, err := storage.setUrlImpl(urlRecords[i])
+	for i := range URLRecords {
+		responseData, err := storage.setURLImpl(URLRecords[i])
 
 		if err != nil {
-			if errors.Is(err, FullUrlCollisionError) {
-				collisionErr = FullUrlCollisionError
-			} else if errors.Is(err, ShortUrlCollisionError) {
-				unacceptedUrlRecords = append(unacceptedUrlRecords, urlRecords[i])
+			if errors.Is(err, FullURLCollisionError) {
+				collisionErr = FullURLCollisionError
+			} else if errors.Is(err, ShortURLCollisionError) {
+				unacceptedURLRecords = append(unacceptedURLRecords, URLRecords[i])
 				continue
 			} else {
 				return nil, nil, err
 			}
 		}
-		responseUrlDataBatch = append(responseUrlDataBatch, responseData)
+		responseURLDataBatch = append(responseURLDataBatch, responseData)
 	}
-	return responseUrlDataBatch, unacceptedUrlRecords, collisionErr
+	return responseURLDataBatch, unacceptedURLRecords, collisionErr
 }
 
 func (storage *RuntimeStorage) OnServerShutdown() error {
@@ -128,8 +128,8 @@ func (storage *RuntimeStorage) Ping(ctx context.Context) error {
 }
 
 func (storage *RuntimeStorage) CreateNewUser(ctx context.Context) (uint64, error) {
-	userId := storage.currentUserId.Add(1)
-	return userId, nil
+	userID := storage.currentuserID.Add(1)
+	return userID, nil
 }
 
 func (storage *RuntimeStorage) loadFromFile() error {
@@ -141,17 +141,17 @@ func (storage *RuntimeStorage) loadFromFile() error {
 
 	jsonDecoder := json.NewDecoder(file)
 
-	fileData := model.UrlDataToSaveToFile{}
+	fileData := model.URLDataToSaveToFile{}
 	err = jsonDecoder.Decode(&fileData)
 
 	if err != nil {
 		return err
 	}
 
-	storage.currentUserId.Store(fileData.CurrentUserId)
-	for i := range fileData.UrlRecords {
-		if ok := storage.container.Set(fileData.UrlRecords[i].ShortURL, fileData.UrlRecords[i].UrlData); !ok {
-			return FullUrlCollisionError
+	storage.currentuserID.Store(fileData.CurrentuserID)
+	for i := range fileData.URLRecords {
+		if ok := storage.container.Set(fileData.URLRecords[i].ShortURL, fileData.URLRecords[i].URLData); !ok {
+			return FullURLCollisionError
 		}
 	}
 
@@ -168,15 +168,15 @@ func (storage *RuntimeStorage) saveToFile() error {
 
 	jsonEncoder := json.NewEncoder(file)
 
-	urlRecords := make([]model.URLRecord, 0, len(storageContainer))
+	URLRecords := make([]model.URLRecord, 0, len(storageContainer))
 
 	for k, v := range storageContainer {
-		urlRecords = append(urlRecords, model.URLRecord{ShortURL: k, UrlData: v})
+		URLRecords = append(URLRecords, model.URLRecord{ShortURL: k, URLData: v})
 	}
 
-	fileData := model.UrlDataToSaveToFile{}
-	fileData.CurrentUserId = storage.currentUserId.Load()
-	fileData.UrlRecords = urlRecords
+	fileData := model.URLDataToSaveToFile{}
+	fileData.CurrentuserID = storage.currentuserID.Load()
+	fileData.URLRecords = URLRecords
 
 	if err := jsonEncoder.Encode(fileData); err != nil {
 		return err

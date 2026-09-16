@@ -39,7 +39,7 @@ func TestApiPostNewURL(t *testing.T) {
 			postMethod: postMethod{
 				postPrefix:  "/api/shorten",
 				contentType: "application/json",
-				body:        `{ "url": "https://abc.net"}`,
+				body:        `{ "URL": "https://abc.net"}`,
 			},
 			want: want{
 				code:            http.StatusCreated,
@@ -96,7 +96,7 @@ func TestApiPostNewURL(t *testing.T) {
 			postMethod: postMethod{
 				postPrefix:  "/api/shorten",
 				contentType: "application/json",
-				body:        `{ "url": ""}`,
+				body:        `{ "URL": ""}`,
 			},
 			want: want{
 				code:          400,
@@ -110,7 +110,7 @@ func TestApiPostNewURL(t *testing.T) {
 			postMethod: postMethod{
 				postPrefix:  "/api/shorten/batch",
 				contentType: "application/json",
-				body:        `[{ "correlation_id": "asd", "original_url": "def.com"}]`,
+				body:        `[{ "correlation_id": "asd", "original_URL": "def.com"}]`,
 			},
 			want: want{
 				code:         http.StatusCreated,
@@ -165,7 +165,7 @@ func TestApiPostNewURL(t *testing.T) {
 			postMethod: postMethod{
 				postPrefix:  "/api/shorten/batch",
 				contentType: "application/json",
-				body:        `[{ "correlation_id": "", "original_url": ""}]`,
+				body:        `[{ "correlation_id": "", "original_URL": ""}]`,
 			},
 			want: want{
 				code:          400,
@@ -211,7 +211,7 @@ func TestApiPostNewURL(t *testing.T) {
 	}
 }
 
-func TestApiPostConflictFullUrl(t *testing.T) {
+func TestApiPostConflictFullURL(t *testing.T) {
 	ts := setUpServer(t)
 	ts.Start()
 	defer ts.Close()
@@ -222,14 +222,14 @@ func TestApiPostConflictFullUrl(t *testing.T) {
 		body   string
 	}{
 		{
-			name:   "conflict with only url",
+			name:   "conflict with only URL",
 			prefix: "/api/shorten",
-			body:   `{ "url": "https://abc.net"}`,
+			body:   `{ "URL": "https://abc.net"}`,
 		},
 		{
-			name:   "conflict batch url",
+			name:   "conflict batch URL",
 			prefix: "/api/shorten/batch",
-			body:   `[{ "correlation_id": "asd", "original_url": "def.com"}, {"correlation_id": "def", "original_url": "asd.com"}]`,
+			body:   `[{ "correlation_id": "asd", "original_URL": "def.com"}, {"correlation_id": "def", "original_URL": "asd.com"}]`,
 		},
 	}
 

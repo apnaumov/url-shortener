@@ -5,7 +5,7 @@ import (
 )
 
 type PostURL struct {
-	URL string `json:"url"`
+	URL string `json:"URL"`
 }
 
 type ResultShortenURL struct {
@@ -13,24 +13,24 @@ type ResultShortenURL struct {
 }
 
 type URLRecord struct {
-	ShortURL string `json:"short_url"`
-	UrlData  RequestURLData
+	ShortURL string `json:"short_URL"`
+	URLData  RequestURLData
 }
 
 type RequestURLData struct {
-	OriginalURL   string `json:"original_url"`
+	OriginalURL   string `json:"original_URL"`
 	CorrelationId string `json:"correlation_id"`
-	UserId        uint64 `json:"user_id"`
+	UserID        uint64 `json:"user_id"`
 }
 
 type ResponcePostURLData struct {
-	ShortUrl      string `json:"short_url"`
+	ShortURL      string `json:"short_URL"`
 	CorrelationId string `json:"correlation_id"`
 }
 
 type ResponceUserURLData struct {
-	ShortUrl    string `json:"short_url"`
-	OriginalURL string `json:"original_url"`
+	ShortURL    string `json:"short_URL"`
+	OriginalURL string `json:"original_URL"`
 }
 
 type Claims struct {
@@ -38,7 +38,7 @@ type Claims struct {
 	UserID uint64
 }
 
-type UrlDataToSaveToFile struct {
-	CurrentUserId uint64      `json:"current_user_id"`
-	UrlRecords    []URLRecord `json:"url_records"`
+type URLDataToSaveToFile struct {
+	CurrentuserID uint64      `json:"current_user_id"`
+	URLRecords    []URLRecord `json:"URL_records"`
 }

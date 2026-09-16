@@ -32,7 +32,7 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.responseData.status = statusCode // захватываем код статуса
 }
 
-func (router *UrlShortenerRouter) getLoggerMiddleware(h http.Handler) http.Handler {
+func (router *URLShortenerRouter) getLoggerMiddleware(h http.Handler) http.Handler {
 	httpLogger := router.requestLogger.Named("http")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

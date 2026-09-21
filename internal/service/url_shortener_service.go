@@ -55,7 +55,7 @@ func (shortenerService *URLShortenerService) GetFullURL(ctx context.Context, sho
 			return "", fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
 		}
 		if errors.Is(err, repository.ErrDeleted) {
-			return "", fmt.Errorf("Error: %w, shortUrl: %s", err, shortURL)
+			return "", fmt.Errorf("error: %w, shortUrl: %s", err, shortURL)
 		}
 
 		return "", err

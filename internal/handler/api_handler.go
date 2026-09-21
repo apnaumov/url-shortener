@@ -66,7 +66,7 @@ func (router *URLShortenerRouter) apiDelUserURLs(w http.ResponseWriter, r *http.
 
 	requestShortURLs := make([]string, 0)
 
-	if !router.checkJsonRequest(w, r, &requestShortURLs) {
+	if !router.checkJSONRequest(w, r, &requestShortURLs) {
 		return
 	}
 
@@ -119,7 +119,7 @@ func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Requ
 
 	var postURL model.PostURL
 
-	if !router.checkJsonRequest(w, r, &postURL) {
+	if !router.checkJSONRequest(w, r, &postURL) {
 		return
 	}
 
@@ -174,7 +174,7 @@ func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http
 
 	var requestDataBatch []model.RequestURLData
 
-	if !router.checkJsonRequest(w, r, &requestDataBatch) {
+	if !router.checkJSONRequest(w, r, &requestDataBatch) {
 		return
 	}
 
@@ -223,7 +223,7 @@ func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http
 	}
 }
 
-func (router *URLShortenerRouter) checkJsonRequest(w http.ResponseWriter, r *http.Request, v any) bool {
+func (router *URLShortenerRouter) checkJSONRequest(w http.ResponseWriter, r *http.Request, v any) bool {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-type incorrect", http.StatusBadRequest)
 		return false

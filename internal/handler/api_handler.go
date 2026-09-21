@@ -20,7 +20,11 @@ func (router *URLShortenerRouter) setAPIHandlers() {
 			r.Post("/", router.apiPostURL)
 			r.Post("/batch", router.apiPostURLBatch)
 		})
-		r.Get("/user/urls", router.apiGetUserURLs)
+
+		r.Route("/user/urls", func(r chi.Router) {
+			r.Get("/", router.apiGetUserURLs)
+			r.Delete("/", router.apiDelUserURLs)
+		})
 	})
 }
 
@@ -35,7 +39,7 @@ func (router *URLShortenerRouter) apiGetUserURLs(w http.ResponseWriter, r *http.
 		return
 	}
 
-	responseData, err := router.service.GetUserURLsL(ctx, userID)
+	responseData, err := router.service.GetUserURLs(ctx, userID)
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -57,23 +61,65 @@ func (router *URLShortenerRouter) apiGetUserURLs(w http.ResponseWriter, r *http.
 	}
 }
 
-func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "Content-type incorrect", http.StatusBadRequest)
+func (router *URLShortenerRouter) apiDelUserURLs(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	requestShortURLs := make([]string, 0)
+
+	if !router.checkJsonRequest(w, r, &requestShortURLs) {
 		return
 	}
+
+	if len(requestShortURLs) == 0 {
+		http.Error(w, "URLs must be not empty", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := getUserIDFromCtx(r.Context())
+	if err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	err = router.service.DeleteUserURLs(ctx, userID, requestShortURLs)
+
+	if err == nil {
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+
+	if errors.Is(err, repository.ErrDeleteProhibited) {
+		router.requestLogger.Warn("Delete urls by this user is prohibited", zap.Strings("URLs", requestShortURLs), zap.Uint64("User id", userID))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if errors.Is(err, repository.ErrDeleted) {
+		router.requestLogger.Warn("Some Urls already deleted", zap.Strings("URLs", requestShortURLs), zap.Uint64("User id", userID))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if errors.Is(err, repository.ErrNotFound) {
+		router.requestLogger.Warn("Some Urls not found", zap.Strings("URLs", requestShortURLs), zap.Uint64("User id", userID))
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	router.requestLogger.Error(err.Error())
+	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+}
+
+func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	var postURL model.PostURL
 
-	if err := json.NewDecoder(r.Body).Decode(&postURL); err != nil {
-		router.requestLogger.Error(err.Error())
-		if errors.Is(err, io.EOF) {
-			http.Error(w, "Body must be not empty", http.StatusBadRequest)
-		} else {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		}
-
+	if !router.checkJsonRequest(w, r, &postURL) {
 		return
 	}
 
@@ -82,15 +128,15 @@ func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
 	userID, err := getUserIDFromCtx(r.Context())
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
 	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: postURL.URL, UserID: userID})
 
@@ -124,29 +170,18 @@ func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Requ
 }
 
 func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "Content-type incorrect", http.StatusBadRequest)
-		return
-	}
 	defer r.Body.Close()
 
 	var requestDataBatch []model.RequestURLData
+
+	if !router.checkJsonRequest(w, r, &requestDataBatch) {
+		return
+	}
 
 	userID, err := getUserIDFromCtx(r.Context())
 	if err != nil {
 		router.requestLogger.Error(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&requestDataBatch); err != nil {
-		router.requestLogger.Error(err.Error())
-		if errors.Is(err, io.EOF) {
-			http.Error(w, "Body must be not empty", http.StatusBadRequest)
-		} else {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		}
-
 		return
 	}
 
@@ -186,4 +221,24 @@ func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+}
+
+func (router *URLShortenerRouter) checkJsonRequest(w http.ResponseWriter, r *http.Request, v any) bool {
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-type incorrect", http.StatusBadRequest)
+		return false
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		router.requestLogger.Error(err.Error())
+		if errors.Is(err, io.EOF) {
+			http.Error(w, "Body must be not empty", http.StatusBadRequest)
+		} else {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+
+		return false
+	}
+
+	return true
 }

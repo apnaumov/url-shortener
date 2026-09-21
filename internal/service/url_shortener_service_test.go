@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +17,10 @@ import (
 )
 
 func TestRuntimeUsage(t *testing.T) {
-	storage, err := repository.NewRuntimeStorage("")
+	logger, err := logger.InitializeRootLogger("test", "debug")
+	require.NoError(t, err)
+
+	storage, err := repository.NewRuntimeStorage("", logger)
 	require.NoError(t, err)
 
 	serv, err := NewURLShortenerService("http://localhost:8080", storage)
@@ -64,7 +68,10 @@ func TestUsageWithFileData(t *testing.T) {
 	err = jsonEncoder.Encode(testData)
 	require.NoError(t, err)
 
-	storage, err := repository.NewRuntimeStorage(filepath)
+	logger, err := logger.InitializeRootLogger("test", "debug")
+	require.NoError(t, err)
+
+	storage, err := repository.NewRuntimeStorage(filepath, logger)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())

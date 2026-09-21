@@ -54,12 +54,16 @@ func (shortenerService *URLShortenerService) GetFullURL(ctx context.Context, sho
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", fmt.Errorf("can't find URL by the key %q. Error: %w", shortURL, err)
 		}
+		if errors.Is(err, repository.ErrDeleted) {
+			return "", fmt.Errorf("Error: %w, shortUrl: %s", err, shortURL)
+		}
+
 		return "", err
 	}
 	return v, nil
 }
 
-func (shortenerService *URLShortenerService) GetUserURLsL(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error) {
+func (shortenerService *URLShortenerService) GetUserURLs(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error) {
 	results, err := shortenerService.shortenerURLs.GetUserURLs(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -74,6 +78,10 @@ func (shortenerService *URLShortenerService) GetUserURLsL(ctx context.Context, u
 	}
 
 	return results, nil
+}
+
+func (shortenerService *URLShortenerService) DeleteUserURLs(ctx context.Context, userID uint64, shortURLs []string) error {
+	return shortenerService.shortenerURLs.DeleteUserURLs(repository.DeleteUserURLsDTO{UserID: userID, ShortURLs: shortURLs})
 }
 
 func (shortenerService *URLShortenerService) SetFullURL(ctx context.Context, URLData model.RequestURLData) (model.ResponcePostURLData, error) {

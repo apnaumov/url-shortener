@@ -125,6 +125,9 @@ func (router *URLShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 		if errors.Is(err, repository.ErrNotFound) {
 			router.requestLogger.Warn(err.Error())
 			http.Error(w, "Invalid URL in request", http.StatusBadRequest)
+		} else if errors.Is(err, repository.ErrDeleted) {
+			router.requestLogger.Info(err.Error())
+			http.Error(w, http.StatusText(http.StatusGone), http.StatusGone)
 		} else {
 			router.requestLogger.Error(err.Error())
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

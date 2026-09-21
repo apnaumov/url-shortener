@@ -7,23 +7,28 @@ import (
 	"io"
 	"os"
 	"sync/atomic"
+	"time"
 
 	"github.com/apnaumov/url-shortener.git/internal/model"
+	"go.uber.org/zap"
 )
 
 type RuntimeStorage struct {
-	container          *Container[model.RequestURLData]
-	uniqueOriginalURLs *Container[string]
-	currentUserID      atomic.Uint64
-	fileStoragePath    string
+	container               *Container[model.RequestURLData]
+	uniqueOriginalURLs      *Container[string]
+	currentUserID           atomic.Uint64
+	fileStoragePath         string
+	pendingMessageProcessor *PendingMessageProcessor[DeleteUserURLsDTO]
 }
 
-func NewRuntimeStorage(fileStoragePath string) (*RuntimeStorage, error) {
+func NewRuntimeStorage(fileStoragePath string, logger *zap.Logger) (*RuntimeStorage, error) {
 	storage := &RuntimeStorage{
 		container:          NewContainer[model.RequestURLData](),
 		uniqueOriginalURLs: NewContainer[string](),
 		fileStoragePath:    fileStoragePath,
 	}
+
+	storage.pendingMessageProcessor = NewPendingMessageProcessor(10*time.Second, 1024, storage.deleteURLsTickFunc, logger)
 
 	if len(fileStoragePath) != 0 {
 		err := storage.loadFromFile()
@@ -32,7 +37,26 @@ func NewRuntimeStorage(fileStoragePath string) (*RuntimeStorage, error) {
 		}
 	}
 
+	storage.pendingMessageProcessor.Run()
+
 	return storage, nil
+}
+
+func (storage *RuntimeStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) error {
+	data := storage.container.GetAll()
+
+	for i := range messages {
+		for j := range messages[i].ShortURLs {
+			elem, ok := data[messages[i].ShortURLs[j]]
+
+			if ok {
+				elem.IsDeleted = true
+				storage.container.ForceSet(messages[i].ShortURLs[j], elem)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (storage *RuntimeStorage) GetFullURL(ctx context.Context, shortURL string) (string, error) {
@@ -45,6 +69,11 @@ func (storage *RuntimeStorage) GetFullURL(ctx context.Context, shortURL string) 
 	if !ok {
 		return "", ErrNotFound
 	}
+
+	if data.IsDeleted {
+		return "", ErrDeleted
+	}
+
 	return data.OriginalURL, nil
 }
 
@@ -57,12 +86,35 @@ func (storage *RuntimeStorage) GetUserURLs(ctx context.Context, userID uint64) (
 
 	storageRecords := storage.container.GetAll()
 	for i, v := range storageRecords {
-		if v.UserID == userID {
+		if v.UserID == userID && !v.IsDeleted {
 			userData = append(userData, model.ResponceUserURLData{ShortURL: i, OriginalURL: v.OriginalURL})
 		}
 	}
 
 	return userData, nil
+}
+
+func (storage *RuntimeStorage) DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO) error {
+	for i := range deleteUserURLs.ShortURLs {
+		data, ok := storage.container.Get(deleteUserURLs.ShortURLs[i])
+
+		if !ok {
+			return ErrNotFound
+		}
+
+		if data.UserID != deleteUserURLs.UserID {
+			return ErrDeleteProhibited
+		}
+
+		if data.IsDeleted {
+			return ErrDeleted
+		}
+
+	}
+
+	storage.pendingMessageProcessor.InsertToQueue(deleteUserURLs)
+
+	return nil
 }
 
 func (storage *RuntimeStorage) SetURL(ctx context.Context, URLRecord model.URLRecord) (model.ResponcePostURLData, error) {
@@ -121,6 +173,7 @@ func (storage *RuntimeStorage) SetURLBatch(ctx context.Context, URLRecords []mod
 }
 
 func (storage *RuntimeStorage) OnServerShutdown() error {
+	storage.pendingMessageProcessor.Shutdown()
 	return storage.saveToFile()
 }
 

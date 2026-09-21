@@ -21,6 +21,7 @@ type RequestURLData struct {
 	OriginalURL   string `json:"original_URL"`
 	CorrelationID string `json:"correlation_id"`
 	UserID        uint64 `json:"user_id"`
+	IsDeleted     bool   `json:"is_deleted"`
 }
 
 type ResponcePostURLData struct {

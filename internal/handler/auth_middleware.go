@@ -14,7 +14,7 @@ import (
 
 type userIDKey struct{}
 
-const TokenExp = time.Hour * 24 * 7
+const tokenExp = time.Hour * 24 * 7
 
 func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler {
 	authLogger := router.requestLogger.Named("Authentification")
@@ -75,19 +75,19 @@ func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler
 	})
 }
 
-type JWTClient struct {
+type jwtClient struct {
 	storage repository.URLStorage
 	authKey []byte
 }
 
-func NewJWTClient(storage repository.URLStorage, authKey []byte) *JWTClient {
-	return &JWTClient{
+func NewJWTClient(storage repository.URLStorage, authKey []byte) *jwtClient {
+	return &jwtClient{
 		storage: storage,
 		authKey: authKey,
 	}
 }
 
-func (jwtClient *JWTClient) BuildToken(ctx context.Context) (model.Claims, string, error) {
+func (jwtClient *jwtClient) BuildToken(ctx context.Context) (model.Claims, string, error) {
 	userID, err := jwtClient.storage.CreateNewUser(ctx)
 	if err != nil {
 		return model.Claims{}, "", err
@@ -95,7 +95,7 @@ func (jwtClient *JWTClient) BuildToken(ctx context.Context) (model.Claims, strin
 
 	claims := model.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExp)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(tokenExp)),
 		},
 		UserID: userID,
 	}
@@ -110,7 +110,7 @@ func (jwtClient *JWTClient) BuildToken(ctx context.Context) (model.Claims, strin
 	return claims, tokenString, nil
 }
 
-func (jwtClient *JWTClient) ParseToken(tokenString string) (model.Claims, error) {
+func (jwtClient *jwtClient) ParseToken(tokenString string) (model.Claims, error) {
 	claims := model.Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, &claims,
 		func(t *jwt.Token) (interface{}, error) {

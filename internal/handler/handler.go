@@ -18,7 +18,7 @@ import (
 type URLShortenerRouter struct {
 	Mux           *chi.Mux
 	service       *service.URLShortenerService
-	jwtClient     *JWTClient
+	jwtClient     *jwtClient
 	requestLogger *zap.Logger
 }
 

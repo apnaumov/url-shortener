@@ -11,6 +11,6 @@ const (
 							UPDATE SET full_url = shortener_urls.full_url RETURNING short_url, correlation_id`
 	insertNewUserID = "SELECT nextval('user_id_seq')"
 	// short url уникален, поэтому достаточно по нему искать
-	setDeletedURL          = "UPDATE shortener_urls SET is_deleted = true WHERE short_url = $1"
+	setDeletedURL          = "UPDATE shortener_urls SET is_deleted = true WHERE short_url IN (%s)"
 	getURLRecordsForDelete = "SELECT user_id, is_deleted FROM shortener_urls WHERE short_url IN (%s)"
 )

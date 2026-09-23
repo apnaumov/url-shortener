@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/stretchr/testify/assert"
@@ -19,9 +20,11 @@ func setUpServer(t *testing.T) *httptest.Server {
 	// получение URL и последующая настройка
 	ts := httptest.NewUnstartedServer(nil)
 
+	config := config.InitConfig()
+
 	logger, err := logger.InitializeRootLogger("test", "debug")
 	require.NoError(t, err)
-	storage, err := repository.NewRuntimeStorage("", logger)
+	storage, err := repository.NewRuntimeStorage("", &config.PendingMessageProcessorParams, logger)
 
 	require.NoError(t, err)
 

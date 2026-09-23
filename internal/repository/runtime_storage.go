@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"go.uber.org/zap"
 )
@@ -19,16 +20,16 @@ type RuntimeStorage struct {
 	currentUserID           atomic.Uint64
 	fileStoragePath         string
 	pendingMessageProcessor *PendingMessageProcessor[DeleteUserURLsDTO]
+	logger                  *zap.Logger
 }
 
-func NewRuntimeStorage(fileStoragePath string, logger *zap.Logger) (*RuntimeStorage, error) {
+func NewRuntimeStorage(fileStoragePath string, messageProcessorConfig *config.PendingMessageProcessorConfig, logger *zap.Logger) (*RuntimeStorage, error) {
 	storage := &RuntimeStorage{
 		container:          NewContainer[model.RequestURLData](),
 		uniqueOriginalURLs: NewContainer[string](),
 		fileStoragePath:    fileStoragePath,
+		logger:             logger,
 	}
-
-	storage.pendingMessageProcessor = NewPendingMessageProcessor(10*time.Second, 1024, storage.deleteURLsTickFunc, logger)
 
 	if len(fileStoragePath) != 0 {
 		err := storage.loadFromFile()
@@ -36,6 +37,15 @@ func NewRuntimeStorage(fileStoragePath string, logger *zap.Logger) (*RuntimeStor
 			return nil, err
 		}
 	}
+
+	storage.pendingMessageProcessor = NewPendingMessageProcessor(
+		time.Duration(messageProcessorConfig.TickTime)*time.Second,
+		messageProcessorConfig.BufferSize,
+		messageProcessorConfig.MaxBatchSize,
+		messageProcessorConfig.WorkerPoolSize,
+		messageProcessorConfig.MaxParallelInsertsToQueue,
+		storage.deleteURLsTickFunc,
+		logger)
 
 	storage.pendingMessageProcessor.Run()
 
@@ -49,10 +59,23 @@ func (storage *RuntimeStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) 
 		for j := range messages[i].ShortURLs {
 			elem, ok := data[messages[i].ShortURLs[j]]
 
-			if ok {
-				elem.IsDeleted = true
-				storage.container.ForceSet(messages[i].ShortURLs[j], elem)
+			if !ok {
+				storage.logger.Error(ErrNotFound.Error())
+				return nil
 			}
+
+			if elem.UserID != messages[i].UserID {
+				storage.logger.Error(ErrDeleteProhibited.Error())
+				return nil
+			}
+
+			if elem.IsDeleted {
+				storage.logger.Error(ErrDeleted.Error())
+				return nil
+			}
+
+			elem.IsDeleted = true
+			storage.container.ForceSet(messages[i].ShortURLs[j], elem)
 		}
 	}
 
@@ -94,27 +117,8 @@ func (storage *RuntimeStorage) GetUserURLs(ctx context.Context, userID uint64) (
 	return userData, nil
 }
 
-func (storage *RuntimeStorage) DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO) error {
-	for i := range deleteUserURLs.ShortURLs {
-		data, ok := storage.container.Get(deleteUserURLs.ShortURLs[i])
-
-		if !ok {
-			return ErrNotFound
-		}
-
-		if data.UserID != deleteUserURLs.UserID {
-			return ErrDeleteProhibited
-		}
-
-		if data.IsDeleted {
-			return ErrDeleted
-		}
-
-	}
-
+func (storage *RuntimeStorage) DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO) {
 	storage.pendingMessageProcessor.InsertToQueue(deleteUserURLs)
-
-	return nil
 }
 
 func (storage *RuntimeStorage) SetURL(ctx context.Context, URLRecord model.URLRecord) (model.ResponcePostURLData, error) {

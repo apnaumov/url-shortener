@@ -80,8 +80,8 @@ func (shortenerService *URLShortenerService) GetUserURLs(ctx context.Context, us
 	return results, nil
 }
 
-func (shortenerService *URLShortenerService) DeleteUserURLs(ctx context.Context, userID uint64, shortURLs []string) error {
-	return shortenerService.shortenerURLs.DeleteUserURLs(repository.DeleteUserURLsDTO{UserID: userID, ShortURLs: shortURLs})
+func (shortenerService *URLShortenerService) DeleteUserURLs(userID uint64, shortURLs []string) {
+	shortenerService.shortenerURLs.DeleteUserURLs(repository.DeleteUserURLsDTO{UserID: userID, ShortURLs: shortURLs})
 }
 
 func (shortenerService *URLShortenerService) SetFullURL(ctx context.Context, URLData model.RequestURLData) (model.ResponcePostURLData, error) {

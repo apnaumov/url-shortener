@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/apnaumov/url-shortener.git/internal/model"
+	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/golang-jwt/jwt/v4"
 )
 
-type UserIDKey struct{}
+type userIDKey struct{}
 
 const TokenExp = time.Hour * 24 * 7
 
@@ -19,6 +20,17 @@ func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler
 	authLogger := router.requestLogger.Named("Authentification")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		setNewCookie := func() (uint64, error) {
+			claims, token, err := router.jwtClient.BuildToken(r.Context())
+			if err != nil {
+				return 0, err
+			}
+
+			http.SetCookie(w, &http.Cookie{Name: "shortener_token", Value: token, HttpOnly: true})
+			return claims.UserID, nil
+		}
+
 		token, err := r.Cookie("shortener_token")
 		var userID uint64
 		if err != nil {
@@ -27,39 +39,56 @@ func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				return
 			}
-			claims, token, err := router.buildJWTString(r.Context())
+
+			newUserID, err := setNewCookie()
 			if err != nil {
 				authLogger.Error(err.Error())
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				return
 			}
-			userID = claims.UserID
-			http.SetCookie(w, &http.Cookie{Name: "shortener_token", Value: token, HttpOnly: true})
+
+			userID = newUserID
 		} else {
-			claims, err := router.parseJWTString(token.Value)
+			claims, err := router.jwtClient.ParseToken(token.Value)
 
 			if err != nil {
-				authLogger.Error(err.Error())
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				return
-			}
-			if claims.UserID == 0 {
-				authLogger.Error("User id is empty")
-				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-				return
-			}
+				newUserID, err := setNewCookie()
+				if err != nil {
+					authLogger.Error(err.Error())
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					return
+				}
+				userID = newUserID
+			} else {
+				userID = claims.UserID
 
-			userID = claims.UserID
+				if userID == 0 {
+					authLogger.Error("User id is empty")
+					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+					return
+				}
+			}
 		}
 
-		ctx := context.WithValue(r.Context(), UserIDKey{}, userID)
+		ctx := context.WithValue(r.Context(), userIDKey{}, userID)
 		h.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func (router *URLShortenerRouter) buildJWTString(ctx context.Context) (model.Claims, string, error) {
+type JWTClient struct {
+	storage repository.URLStorage
+	authKey []byte
+}
 
-	userID, err := router.service.GetStorage().CreateNewUser(ctx)
+func NewJWTClient(storage repository.URLStorage, authKey []byte) *JWTClient {
+	return &JWTClient{
+		storage: storage,
+		authKey: authKey,
+	}
+}
+
+func (jwtClient *JWTClient) BuildToken(ctx context.Context) (model.Claims, string, error) {
+	userID, err := jwtClient.storage.CreateNewUser(ctx)
 	if err != nil {
 		return model.Claims{}, "", err
 	}
@@ -73,7 +102,7 @@ func (router *URLShortenerRouter) buildJWTString(ctx context.Context) (model.Cla
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	tokenString, err := token.SignedString(router.authKey)
+	tokenString, err := token.SignedString(jwtClient.authKey)
 	if err != nil {
 		return model.Claims{}, "", err
 	}
@@ -81,14 +110,14 @@ func (router *URLShortenerRouter) buildJWTString(ctx context.Context) (model.Cla
 	return claims, tokenString, nil
 }
 
-func (router *URLShortenerRouter) parseJWTString(tokenString string) (model.Claims, error) {
+func (jwtClient *JWTClient) ParseToken(tokenString string) (model.Claims, error) {
 	claims := model.Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, &claims,
 		func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
-			return []byte(router.authKey), nil
+			return []byte(jwtClient.authKey), nil
 		})
 	if err != nil {
 		return model.Claims{}, err
@@ -102,9 +131,9 @@ func (router *URLShortenerRouter) parseJWTString(tokenString string) (model.Clai
 }
 
 func getUserIDFromCtx(ctx context.Context) (uint64, error) {
-	rawuserID := ctx.Value(UserIDKey{})
+	rawUserID := ctx.Value(userIDKey{})
 
-	if userID, ok := rawuserID.(uint64); ok {
+	if userID, ok := rawUserID.(uint64); ok {
 		return userID, nil
 	} else {
 		return 0, fmt.Errorf("can't get user id from context")

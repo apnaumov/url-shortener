@@ -18,7 +18,7 @@ import (
 type URLShortenerRouter struct {
 	Mux           *chi.Mux
 	service       *service.URLShortenerService
-	authKey       []byte
+	jwtClient     *JWTClient
 	requestLogger *zap.Logger
 }
 
@@ -41,7 +41,7 @@ func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage reposi
 	}
 
 	URLShortenerRouter.service = shortener
-	URLShortenerRouter.authKey = authKey
+	URLShortenerRouter.jwtClient = NewJWTClient(URLStorage, authKey)
 
 	URLShortenerRouter.Mux.Use(URLShortenerRouter.getLoggerMiddleware)
 	URLShortenerRouter.Mux.Use(URLShortenerRouter.getAuthMiddleware)

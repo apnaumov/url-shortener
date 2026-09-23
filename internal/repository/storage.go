@@ -13,7 +13,7 @@ import (
 type URLStorage interface {
 	GetFullURL(ctx context.Context, shortURL string) (string, error)
 	GetUserURLs(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error)
-	DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO) error
+	DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO)
 	SetURL(ctx context.Context, URLRecord model.URLRecord) (model.ResponcePostURLData, error)
 	SetURLBatch(ctx context.Context, URLRecords []model.URLRecord) ([]model.ResponcePostURLData, UnacceptedURLRecords, error)
 	CreateNewUser(ctx context.Context) (uint64, error)
@@ -37,52 +37,70 @@ var (
 )
 
 type PendingMessageProcessor[T any] struct {
-	messageQueue chan T
-	tickTime     time.Duration
-	tickFunc     func([]T) error
-	stopSig      chan struct{}
-	logger       *zap.Logger
-	wg           sync.WaitGroup
+	messageQueue   chan T
+	tickTime       time.Duration
+	tickFunc       func([]T) error
+	stopSig        chan struct{}
+	maxBatchSize   int
+	workerPoolSize uint64
+	insertSem      chan struct{}
+	logger         *zap.Logger
+	wg             sync.WaitGroup
 }
 
-func NewPendingMessageProcessor[T any](tick time.Duration, bufferSize uint64, tickFunc func(messages []T) error, logger *zap.Logger) *PendingMessageProcessor[T] {
+func NewPendingMessageProcessor[T any](tick time.Duration, bufferSize uint64, maxBatchSize int, workerPoolSize uint64, insertSemSize uint64,
+	tickFunc func(messages []T) error, logger *zap.Logger) *PendingMessageProcessor[T] {
+
 	return &PendingMessageProcessor[T]{
-		messageQueue: make(chan T, 1024),
-		tickTime:     tick,
-		tickFunc:     tickFunc,
-		stopSig:      make(chan struct{}),
-		logger:       logger,
+		messageQueue:   make(chan T, bufferSize),
+		tickTime:       tick,
+		tickFunc:       tickFunc,
+		stopSig:        make(chan struct{}),
+		maxBatchSize:   maxBatchSize,
+		workerPoolSize: workerPoolSize,
+		insertSem:      make(chan struct{}, insertSemSize),
+		logger:         logger,
 	}
 }
 
 func (processor *PendingMessageProcessor[T]) Run() {
-	processor.wg.Go(func() {
-		ticker := time.NewTicker(processor.tickTime)
+	for range processor.workerPoolSize {
+		processor.wg.Go(func() {
+			ticker := time.NewTicker(processor.tickTime)
 
-		var messages []T
+			var messages []T
 
-		for {
-			select {
-			case msg := <-processor.messageQueue:
-				messages = append(messages, msg)
-			case <-ticker.C:
+			processMessages := func() {
 				if len(messages) == 0 {
-					continue
+					return
 				}
 				// сохраним все пришедшие сообщения одновременно
 				err := processor.tickFunc(messages)
 				if err != nil {
 					processor.logger.Debug("cannot process messages", zap.Error(err))
-					continue
+					return
 				}
 				// сотрём успешно отосланные сообщения
 				messages = nil
-			case <-processor.stopSig:
-				ticker.Stop()
-				return
 			}
-		}
-	})
+
+			for {
+				select {
+				case msg := <-processor.messageQueue:
+					messages = append(messages, msg)
+					if len(messages) >= processor.maxBatchSize {
+						processMessages()
+					}
+				case <-ticker.C:
+					processMessages()
+				case <-processor.stopSig:
+					ticker.Stop()
+					processMessages()
+					return
+				}
+			}
+		})
+	}
 }
 
 func (processor *PendingMessageProcessor[T]) Shutdown() {
@@ -91,5 +109,10 @@ func (processor *PendingMessageProcessor[T]) Shutdown() {
 }
 
 func (processor *PendingMessageProcessor[T]) InsertToQueue(message T) {
-	processor.messageQueue <- message
+	processor.insertSem <- struct{}{}
+
+	go func() {
+		processor.messageQueue <- message
+		<-processor.insertSem
+	}()
 }

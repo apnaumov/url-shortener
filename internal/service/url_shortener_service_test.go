@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
@@ -20,7 +21,9 @@ func TestRuntimeUsage(t *testing.T) {
 	logger, err := logger.InitializeRootLogger("test", "debug")
 	require.NoError(t, err)
 
-	storage, err := repository.NewRuntimeStorage("", logger)
+	config := config.InitConfig()
+
+	storage, err := repository.NewRuntimeStorage("", &config.PendingMessageProcessorParams, logger)
 	require.NoError(t, err)
 
 	serv, err := NewURLShortenerService("http://localhost:8080", storage)
@@ -51,6 +54,8 @@ func TestUsageWithFileData(t *testing.T) {
 
 	const serverBaseURL = "http://localhost:8080"
 
+	config := config.InitConfig()
+
 	testData := model.URLDataToSaveToFile{
 		CurrentUserID: 0,
 		URLRecords: []model.URLRecord{
@@ -71,7 +76,7 @@ func TestUsageWithFileData(t *testing.T) {
 	logger, err := logger.InitializeRootLogger("test", "debug")
 	require.NoError(t, err)
 
-	storage, err := repository.NewRuntimeStorage(filepath, logger)
+	storage, err := repository.NewRuntimeStorage(filepath, &config.PendingMessageProcessorParams, logger)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())

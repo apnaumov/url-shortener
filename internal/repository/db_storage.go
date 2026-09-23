@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	urlshortener "github.com/apnaumov/url-shortener.git"
+	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/pgx/v5"
@@ -20,10 +21,11 @@ import (
 
 type DBStorage struct {
 	db                      *sql.DB
+	logger                  *zap.Logger
 	pendingMessageProcessor *PendingMessageProcessor[DeleteUserURLsDTO]
 }
 
-func NewDBStorage(connStr string, logger *zap.Logger) (*DBStorage, error) {
+func NewDBStorage(connStr string, messageProcessorConfig *config.PendingMessageProcessorConfig, logger *zap.Logger) (*DBStorage, error) {
 	err := runMigrations(connStr)
 	if err != nil {
 		return nil, err
@@ -35,15 +37,25 @@ func NewDBStorage(connStr string, logger *zap.Logger) (*DBStorage, error) {
 	}
 
 	dbStorage := &DBStorage{
-		db: db,
+		db:     db,
+		logger: logger,
 	}
 
-	dbStorage.pendingMessageProcessor = NewPendingMessageProcessor(10*time.Second, 1024, dbStorage.deleteURLsTickFunc, logger)
+	dbStorage.pendingMessageProcessor = NewPendingMessageProcessor(
+		time.Duration(messageProcessorConfig.TickTime)*time.Second,
+		messageProcessorConfig.BufferSize,
+		messageProcessorConfig.MaxBatchSize,
+		messageProcessorConfig.WorkerPoolSize,
+		messageProcessorConfig.MaxParallelInsertsToQueue,
+		dbStorage.deleteURLsTickFunc,
+		logger)
+
 	dbStorage.pendingMessageProcessor.Run()
 
 	return dbStorage, nil
 }
 
+// Возвращаем только ошибки, касающиеся БД, чтобы повторить операцию в PendingMessageProcessor
 func (storage *DBStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -55,17 +67,87 @@ func (storage *DBStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) error
 
 	defer tx.Rollback()
 
-	for i := range messages {
-		for j := range messages[i].ShortURLs {
-			_, err := tx.ExecContext(ctx, setDeletedURL, messages[i].ShortURLs[j])
+	var paramsForDeleteUrlsQuery struct {
+		counter      int
+		placeholders []string
+		args         []any
+	}
 
+	for i := range messages {
+		placeholders := make([]string, len(messages[i].ShortURLs))
+		args := make([]any, len(messages[i].ShortURLs))
+		for j, u := range messages[i].ShortURLs {
+			placeholders[j] = fmt.Sprintf("$%d", j+1)
+			args[j] = u
+
+			paramsForDeleteUrlsQuery.placeholders = append(paramsForDeleteUrlsQuery.placeholders, fmt.Sprintf("$%d", paramsForDeleteUrlsQuery.counter+1))
+			paramsForDeleteUrlsQuery.args = append(paramsForDeleteUrlsQuery.args, u)
+			paramsForDeleteUrlsQuery.counter++
+		}
+
+		resQueryToGet := fmt.Sprintf(
+			getURLRecordsForDelete,
+			strings.Join(placeholders, ","),
+		)
+
+		rows, err := storage.db.QueryContext(ctx, resQueryToGet, args...)
+
+		if err != nil {
+			return err
+		}
+
+		defer rows.Close()
+
+		countRows := 0
+		for rows.Next() {
+			var (
+				userID    uint64
+				isDeleted bool
+			)
+			err = rows.Scan(&userID, &isDeleted)
 			if err != nil {
 				return err
 			}
+
+			if userID != messages[i].UserID {
+				storage.logger.Error(ErrDeleteProhibited.Error(), zap.Uint64("Current UserID", userID), zap.Uint64("Request UserID", messages[i].UserID))
+				return nil
+			}
+
+			if isDeleted {
+				storage.logger.Error(ErrDeleted.Error())
+				return nil
+			}
+
+			countRows++
+		}
+
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		if countRows != len(messages[i].ShortURLs) {
+			storage.logger.Error(ErrNotFound.Error())
+			return nil
 		}
 	}
 
-	tx.Commit()
+	resDeleteQuery := fmt.Sprintf(
+		setDeletedURL,
+		strings.Join(paramsForDeleteUrlsQuery.placeholders, ","),
+	)
+
+	_, err = tx.ExecContext(ctx, resDeleteQuery, paramsForDeleteUrlsQuery.args...)
+
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -121,63 +203,8 @@ func (storage *DBStorage) GetUserURLs(ctx context.Context, userID uint64) ([]mod
 	return usersURLData, nil
 }
 
-func (storage *DBStorage) DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	placeholders := make([]string, len(deleteUserURLs.ShortURLs))
-	args := make([]any, len(deleteUserURLs.ShortURLs))
-	for i, u := range deleteUserURLs.ShortURLs {
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-		args[i] = u
-	}
-
-	query := fmt.Sprintf(
-		getURLRecordsForDelete,
-		strings.Join(placeholders, ","),
-	)
-
-	rows, err := storage.db.QueryContext(ctx, query, args...)
-
-	if err != nil {
-		return err
-	}
-
-	defer rows.Close()
-
-	countRows := 0
-	for rows.Next() {
-		var (
-			userID    uint64
-			isDeleted bool
-		)
-		err = rows.Scan(&userID, &isDeleted)
-		if err != nil {
-			return err
-		}
-
-		if userID != deleteUserURLs.UserID {
-			return ErrDeleteProhibited
-		}
-
-		if isDeleted {
-			return ErrDeleted
-		}
-
-		countRows++
-	}
-
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	if countRows != len(deleteUserURLs.ShortURLs) {
-		return ErrNotFound
-	}
-
+func (storage *DBStorage) DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO) {
 	storage.pendingMessageProcessor.InsertToQueue(deleteUserURLs)
-
-	return nil
 }
 
 func (storage *DBStorage) SetURL(ctx context.Context, URLRecord model.URLRecord) (model.ResponcePostURLData, error) {

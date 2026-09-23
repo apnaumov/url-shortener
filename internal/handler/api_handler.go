@@ -82,36 +82,9 @@ func (router *URLShortenerRouter) apiDelUserURLs(w http.ResponseWriter, r *http.
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
+	router.service.DeleteUserURLs(userID, requestShortURLs)
 
-	err = router.service.DeleteUserURLs(ctx, userID, requestShortURLs)
-
-	if err == nil {
-		w.WriteHeader(http.StatusAccepted)
-		return
-	}
-
-	if errors.Is(err, repository.ErrDeleteProhibited) {
-		router.requestLogger.Warn("Delete urls by this user is prohibited", zap.Strings("URLs", requestShortURLs), zap.Uint64("User id", userID))
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-
-	if errors.Is(err, repository.ErrDeleted) {
-		router.requestLogger.Warn("Some Urls already deleted", zap.Strings("URLs", requestShortURLs), zap.Uint64("User id", userID))
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-
-	if errors.Is(err, repository.ErrNotFound) {
-		router.requestLogger.Warn("Some Urls not found", zap.Strings("URLs", requestShortURLs), zap.Uint64("User id", userID))
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
-	}
-
-	router.requestLogger.Error(err.Error())
-	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Request) {

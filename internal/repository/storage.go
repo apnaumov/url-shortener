@@ -104,7 +104,7 @@ func (processor *PendingMessageProcessor[T]) Run() {
 }
 
 func (processor *PendingMessageProcessor[T]) Shutdown() {
-	processor.stopSig <- struct{}{}
+	close(processor.stopSig)
 	processor.wg.Wait()
 }
 

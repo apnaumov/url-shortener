@@ -291,6 +291,7 @@ func (storage *DBStorage) setURLImpl(ctx context.Context, tx *sql.Tx, URLRecord 
 }
 
 func (storage *DBStorage) OnServerShutdown() error {
+	storage.pendingMessageProcessor.Shutdown()
 	return storage.db.Close()
 }
 

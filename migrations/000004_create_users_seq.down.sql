@@ -1,0 +1,2 @@
+DROP SEQUENCE IF EXISTS user_id_seq;
+ALTER TABLE shortener_urls DROP COLUMN IF EXISTS user_id;

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apnaumov/url-shortener.git/internal/config"
+	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,10 +20,21 @@ func setUpServer(t *testing.T) *httptest.Server {
 	// получение URL и последующая настройка
 	ts := httptest.NewUnstartedServer(nil)
 
-	storage, err := repository.NewRuntimeStorage("")
+	pendingMessageProcessorParams := config.PendingMessageProcessorConfig{
+		TickTime:                  10,
+		BufferSize:                1024,
+		MaxBatchSize:              512,
+		WorkerPoolSize:            20,
+		MaxParallelInsertsToQueue: 20,
+	}
+
+	logger, err := logger.InitializeRootLogger("test", "debug")
+	require.NoError(t, err)
+	storage, err := repository.NewRuntimeStorage("", &pendingMessageProcessorParams, logger)
+
 	require.NoError(t, err)
 
-	router, err := NewUrlShortenerRouter("http://"+ts.Listener.Addr().String(), storage)
+	router, err := NewURLShortenerRouter("http://"+ts.Listener.Addr().String(), []byte("mysupersecretkey"), storage)
 	require.NoError(t, err)
 	ts.Config.Handler = router.Mux
 
@@ -141,7 +154,7 @@ func TestPostNewURL(t *testing.T) {
 	}
 }
 
-func TestGetFullUrl(t *testing.T) {
+func TestGetFullURL(t *testing.T) {
 	ts := setUpServer(t)
 	ts.Start()
 	defer ts.Close()
@@ -179,7 +192,7 @@ func TestGetFullUrl(t *testing.T) {
 		assert.Equal(t, body, locationHeader)
 	})
 
-	t.Run("can't find fullUrl", func(t *testing.T) {
+	t.Run("can't find fullURL", func(t *testing.T) {
 		const shortURL = "ASDQWE"
 		reqURL, err := url.JoinPath(ts.URL, "/", shortURL)
 		require.NoError(t, err)
@@ -199,7 +212,7 @@ func TestGetFullUrl(t *testing.T) {
 	})
 }
 
-func TestPostConflictFullUrl(t *testing.T) {
+func TestPostConflictFullURL(t *testing.T) {
 	ts := setUpServer(t)
 	ts.Start()
 	defer ts.Close()

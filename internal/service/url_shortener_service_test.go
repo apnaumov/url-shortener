@@ -21,9 +21,15 @@ func TestRuntimeUsage(t *testing.T) {
 	logger, err := logger.InitializeRootLogger("test", "debug")
 	require.NoError(t, err)
 
-	config := config.InitConfig()
+	pendingMessageProcessorParams := config.PendingMessageProcessorConfig{
+		TickTime:                  10,
+		BufferSize:                1024,
+		MaxBatchSize:              512,
+		WorkerPoolSize:            20,
+		MaxParallelInsertsToQueue: 20,
+	}
 
-	storage, err := repository.NewRuntimeStorage("", &config.PendingMessageProcessorParams, logger)
+	storage, err := repository.NewRuntimeStorage("", &pendingMessageProcessorParams, logger)
 	require.NoError(t, err)
 
 	serv, err := NewURLShortenerService("http://localhost:8080", storage)
@@ -54,7 +60,13 @@ func TestUsageWithFileData(t *testing.T) {
 
 	const serverBaseURL = "http://localhost:8080"
 
-	config := config.InitConfig()
+	pendingMessageProcessorParams := config.PendingMessageProcessorConfig{
+		TickTime:                  10,
+		BufferSize:                1024,
+		MaxBatchSize:              512,
+		WorkerPoolSize:            20,
+		MaxParallelInsertsToQueue: 20,
+	}
 
 	testData := model.URLDataToSaveToFile{
 		CurrentUserID: 0,
@@ -76,7 +88,7 @@ func TestUsageWithFileData(t *testing.T) {
 	logger, err := logger.InitializeRootLogger("test", "debug")
 	require.NoError(t, err)
 
-	storage, err := repository.NewRuntimeStorage(filepath, &config.PendingMessageProcessorParams, logger)
+	storage, err := repository.NewRuntimeStorage(filepath, &pendingMessageProcessorParams, logger)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())

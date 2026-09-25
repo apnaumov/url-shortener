@@ -20,11 +20,17 @@ func setUpServer(t *testing.T) *httptest.Server {
 	// получение URL и последующая настройка
 	ts := httptest.NewUnstartedServer(nil)
 
-	config := config.InitConfig()
+	pendingMessageProcessorParams := config.PendingMessageProcessorConfig{
+		TickTime:                  10,
+		BufferSize:                1024,
+		MaxBatchSize:              512,
+		WorkerPoolSize:            20,
+		MaxParallelInsertsToQueue: 20,
+	}
 
 	logger, err := logger.InitializeRootLogger("test", "debug")
 	require.NoError(t, err)
-	storage, err := repository.NewRuntimeStorage("", &config.PendingMessageProcessorParams, logger)
+	storage, err := repository.NewRuntimeStorage("", &pendingMessageProcessorParams, logger)
 
 	require.NoError(t, err)
 

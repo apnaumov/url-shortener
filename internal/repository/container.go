@@ -38,6 +38,13 @@ func (store *Container[T]) Set(key string, value T) bool {
 	return false
 }
 
+func (store *Container[T]) ForceSet(key string, value T) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	store.container[key] = value
+}
+
 func (store *Container[T]) GetAll() map[string]T {
 	store.mu.Lock()
 	defer store.mu.Unlock()

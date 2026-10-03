@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func StartUrlShortenerServer() {
+func StartURLShortenerServer() {
 	conf := config.InitConfig()
 	err := logger.SetLogDirectory(conf.LogDirectory)
 	if err != nil {
@@ -30,17 +30,17 @@ func StartUrlShortenerServer() {
 	}
 	zap.RedirectStdLog(logger)
 
-	var storage repository.UrlStorage
+	var storage repository.URLStorage
 	logger.Info("Try to initialize storage")
-	if len(conf.DbConnectionString) != 0 {
-		st, err := repository.NewDbStorage(conf.DbConnectionString)
+	if len(conf.DBConnectionString) != 0 {
+		st, err := repository.NewDBStorage(conf.DBConnectionString, &conf.PendingMessageProcessorParams, logger.Named("storage"))
 		if err != nil {
 			log.Fatal(err.Error())
 		}
 		logger.Info("Db storage initialized")
 		storage = st
 	} else {
-		st, err := repository.NewRuntimeStorage(conf.FileStoragePath)
+		st, err := repository.NewRuntimeStorage(conf.FileStoragePath, &conf.PendingMessageProcessorParams, logger.Named("storage"))
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -48,7 +48,7 @@ func StartUrlShortenerServer() {
 		storage = st
 	}
 
-	router, err := handler.NewUrlShortenerRouter(conf.ServerBaseUrl, storage)
+	router, err := handler.NewURLShortenerRouter(conf.ServerBaseURL, conf.SecretKey, storage)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}

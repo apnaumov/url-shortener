@@ -137,3 +137,40 @@ func TestAuditServiceFile(t *testing.T) {
 		assert.Len(t, readMessages(t, path), n)
 	})
 }
+
+func TestAuditServiceFileAndRemote(t *testing.T) {
+	userID := uint64(7)
+	originalURL := "http://both.com"
+	action := "shorten"
+
+	checkMsg := func(msg model.AuditServiceMessage) {
+		assert.Equal(t, action, msg.Action)
+		assert.Equal(t, userID, msg.UserID)
+		assert.Equal(t, originalURL, msg.OriginalURL)
+		assert.NotEmpty(t, msg.Timestamp)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m model.AuditServiceMessage
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&m))
+
+		checkMsg(m)
+	}))
+	t.Cleanup(srv.Close)
+
+	path := filepath.Join(t.TempDir(), "audit.log")
+
+	service, err := NewAuditService(config.AuditServiceConfig{FilePath: path, URL: srv.URL})
+	require.NoError(t, err)
+	require.Len(t, service.handlers, 2)
+
+	require.Empty(t, service.NotifyShorten(userID, originalURL))
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var fileMsg model.AuditServiceMessage
+	require.NoError(t, json.NewDecoder(bytes.NewReader(data)).Decode(&fileMsg))
+
+	checkMsg(fileMsg)
+}

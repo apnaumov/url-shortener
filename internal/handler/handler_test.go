@@ -1,21 +1,32 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/logger"
+	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func setUpServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return setUpServerWithAudit(t, config.AuditServiceConfig{})
+}
+
+func setUpServerWithAudit(t *testing.T, auditConf config.AuditServiceConfig) *httptest.Server {
 	t.Helper()
 	// получение URL и последующая настройка
 	ts := httptest.NewUnstartedServer(nil)
@@ -34,7 +45,7 @@ func setUpServer(t *testing.T) *httptest.Server {
 
 	require.NoError(t, err)
 
-	router, err := NewURLShortenerRouter("http://"+ts.Listener.Addr().String(), []byte("mysupersecretkey"), storage)
+	router, err := NewURLShortenerRouter("http://"+ts.Listener.Addr().String(), []byte("mysupersecretkey"), storage, auditConf)
 	require.NoError(t, err)
 	ts.Config.Handler = router.Mux
 
@@ -242,4 +253,85 @@ func TestPostConflictFullURL(t *testing.T) {
 	// проверяем код ответа
 	assert.Equal(t, http.StatusConflict, repeatResp.StatusCode)
 	defer repeatResp.Body.Close()
+}
+
+// readAuditMessages ждёт, пока в аудит-файле появится ровно want записей, и возвращает их.
+func readAuditMessages(t *testing.T, path string, want int) []model.AuditServiceMessage {
+	t.Helper()
+
+	var messages []model.AuditServiceMessage
+	require.Eventually(t, func() bool {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+
+		messages = nil
+		dec := json.NewDecoder(bytes.NewReader(data))
+		for dec.More() {
+			var m model.AuditServiceMessage
+			if err := dec.Decode(&m); err != nil {
+				return false
+			}
+			messages = append(messages, m)
+		}
+		return len(messages) == want
+	}, 2*time.Second, 10*time.Millisecond)
+
+	return messages
+}
+
+func TestAuditPostAndFollow(t *testing.T) {
+	auditPath := filepath.Join(t.TempDir(), "audit.log")
+	ts := setUpServerWithAudit(t, config.AuditServiceConfig{FilePath: auditPath})
+	ts.Start()
+	defer ts.Close()
+
+	ts.Client().CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	const originalURL = "https://audit.example.com"
+
+	postReq, err := http.NewRequest(http.MethodPost, ts.URL+"/", strings.NewReader(originalURL))
+	require.NoError(t, err)
+	postReq.Header.Set("Content-Type", "text/plain")
+	postReq.Header.Set("Accept-Encoding", "")
+
+	postResp, err := ts.Client().Do(postReq)
+	require.NoError(t, err)
+	defer postResp.Body.Close()
+	require.Equal(t, http.StatusCreated, postResp.StatusCode)
+
+	shortURL, err := io.ReadAll(postResp.Body)
+	require.NoError(t, err)
+
+	messages := readAuditMessages(t, auditPath, 1)
+	assert.Equal(t, "shorten", messages[0].Action)
+	assert.Equal(t, originalURL, messages[0].OriginalURL)
+	assert.NotEmpty(t, messages[0].Timestamp)
+
+	conflictReq, err := http.NewRequest(http.MethodPost, ts.URL+"/", strings.NewReader(originalURL))
+	require.NoError(t, err)
+	conflictReq.Header.Set("Content-Type", "text/plain")
+	conflictReq.Header.Set("Accept-Encoding", "")
+
+	conflictResp, err := ts.Client().Do(conflictReq)
+	require.NoError(t, err)
+	defer conflictResp.Body.Close()
+	require.Equal(t, http.StatusConflict, conflictResp.StatusCode)
+
+	getReq, err := http.NewRequest(http.MethodGet, string(shortURL), nil)
+	require.NoError(t, err)
+
+	getResp, err := ts.Client().Do(getReq)
+	require.NoError(t, err)
+	defer getResp.Body.Close()
+	require.Equal(t, http.StatusTemporaryRedirect, getResp.StatusCode)
+
+	messages = readAuditMessages(t, auditPath, 2)
+	assert.Equal(t, "shorten", messages[0].Action)
+	assert.Equal(t, "follow", messages[1].Action)
+	assert.Equal(t, originalURL, messages[1].OriginalURL)
+	assert.NotEmpty(t, messages[1].Timestamp)
 }

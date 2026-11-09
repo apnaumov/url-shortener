@@ -140,6 +140,13 @@ func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Requ
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+
+	if status == http.StatusCreated && router.auditService != nil {
+		errs := router.auditService.NotifyShorten(userID, postURL.URL)
+		for i := range errs {
+			router.requestLogger.Error("Audit service error.", zap.String("Error", errs[i].Error()))
+		}
+	}
 }
 
 func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http.Request) {

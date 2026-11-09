@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
@@ -20,9 +21,10 @@ type URLShortenerRouter struct {
 	service       *service.URLShortenerService
 	jwtClient     *jwtClient
 	requestLogger *zap.Logger
+	auditService  *service.AuditService
 }
 
-func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage repository.URLStorage) (*URLShortenerRouter, error) {
+func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage repository.URLStorage, auditConf config.AuditServiceConfig) (*URLShortenerRouter, error) {
 	URLShortenerRouter := &URLShortenerRouter{}
 	URLShortenerRouter.Mux = chi.NewRouter()
 
@@ -40,8 +42,14 @@ func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage reposi
 		return nil, err
 	}
 
+	audit, err := service.NewAuditService(auditConf)
+	if err != nil {
+		URLShortenerRouter.requestLogger.Warn("Can't initialize audit service", zap.Error(err))
+	}
+
 	URLShortenerRouter.service = shortener
 	URLShortenerRouter.jwtClient = NewJWTClient(URLStorage, authKey)
+	URLShortenerRouter.auditService = audit
 
 	URLShortenerRouter.Mux.Use(URLShortenerRouter.getLoggerMiddleware)
 	URLShortenerRouter.Mux.Use(URLShortenerRouter.getAuthMiddleware)
@@ -95,7 +103,9 @@ func (router *URLShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: string(body), UserID: userID})
+	originalURL := string(body)
+
+	responseData, err := router.service.SetFullURL(ctx, model.RequestURLData{OriginalURL: originalURL, UserID: userID})
 	var status int
 
 	if err != nil {
@@ -116,9 +126,23 @@ func (router *URLShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(status)
 
 	w.Write([]byte(responseData.ShortURL))
+
+	if status == http.StatusCreated && router.auditService != nil {
+		errs := router.auditService.NotifyShorten(userID, originalURL)
+		for i := range errs {
+			router.requestLogger.Error("Audit service error.", zap.String("Error", errs[i].Error()))
+		}
+	}
 }
 
 func (router *URLShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
+	userID, err := getUserIDFromCtx(r.Context())
+	if err != nil {
+		router.requestLogger.Error(err.Error())
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	shortPath := chi.URLParam(r, "shortPath")
 	URLData, err := router.service.GetFullURL(r.Context(), shortPath)
 	if err != nil {
@@ -138,6 +162,13 @@ func (router *URLShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 
 	w.Header().Set("Location", URLData)
 	w.WriteHeader(http.StatusTemporaryRedirect)
+
+	if router.auditService != nil {
+		errs := router.auditService.NotifyFollow(userID, URLData)
+		for i := range errs {
+			router.requestLogger.Error("Audit service error.", zap.String("Error", errs[i].Error()))
+		}
+	}
 }
 
 func (router *URLShortenerRouter) pingDB(w http.ResponseWriter, r *http.Request) {

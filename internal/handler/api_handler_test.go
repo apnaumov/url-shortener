@@ -3,10 +3,12 @@ package handler
 import (
 	"io"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -260,4 +262,39 @@ func TestApiPostConflictFullURL(t *testing.T) {
 			defer repeatResp.Body.Close()
 		})
 	}
+}
+
+func TestApiAuditShorten(t *testing.T) {
+	auditPath := filepath.Join(t.TempDir(), "audit.log")
+	ts := setUpServerWithAudit(t, config.AuditServiceConfig{FilePath: auditPath})
+	ts.Start()
+	defer ts.Close()
+
+	post := func(t *testing.T, body string) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/shorten", strings.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept-Encoding", "")
+
+		resp, err := ts.Client().Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	require.Equal(t, http.StatusCreated, post(t, `{"URL": "https://api-audit.example.com"}`))
+
+	messages := readAuditMessages(t, auditPath, 1)
+	assert.Equal(t, "shorten", messages[0].Action)
+	assert.Equal(t, "https://api-audit.example.com", messages[0].OriginalURL)
+	assert.NotEmpty(t, messages[0].Timestamp)
+
+	// конфликт и некорректный запрос в аудит не попадают
+	require.Equal(t, http.StatusConflict, post(t, `{"URL": "https://api-audit.example.com"}`))
+	require.Equal(t, http.StatusBadRequest, post(t, `{"URL": ""}`))
+
+	require.Equal(t, http.StatusCreated, post(t, `{"URL": "https://api-audit2.example.com"}`))
+	messages = readAuditMessages(t, auditPath, 2)
+	assert.Equal(t, "https://api-audit2.example.com", messages[1].OriginalURL)
 }

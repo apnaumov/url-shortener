@@ -43,3 +43,10 @@ type URLDataToSaveToFile struct {
 	CurrentUserID uint64      `json:"current_user_id"`
 	URLRecords    []URLRecord `json:"URL_records"`
 }
+
+type AuditServiceMessage struct {
+	Timestamp   int64  `json:"ts"`
+	Action      string `json:"action"`
+	UserID      uint64 `json:"user_id"`
+	OriginalURL string `json:"url"`
+}

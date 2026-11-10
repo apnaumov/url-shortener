@@ -24,7 +24,7 @@ type AuditService struct {
 
 func NewAuditService(conf config.AuditServiceConfig) (*AuditService, error) {
 	if len(conf.FilePath) == 0 && len(conf.URL) == 0 {
-		return nil, fmt.Errorf("Can't initialize audit service because config is empty")
+		return nil, fmt.Errorf("can't initialize audit service because config is empty")
 	}
 
 	service := &AuditService{handlers: make([]auditMessageHandler, 0)}

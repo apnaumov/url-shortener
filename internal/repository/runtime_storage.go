@@ -53,11 +53,9 @@ func NewRuntimeStorage(fileStoragePath string, messageProcessorConfig *config.Pe
 }
 
 func (storage *RuntimeStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) error {
-	data := storage.container.GetAll()
-
 	for i := range messages {
 		for j := range messages[i].ShortURLs {
-			elem, ok := data[messages[i].ShortURLs[j]]
+			elem, ok := storage.container.Get(messages[i].ShortURLs[j])
 
 			if !ok {
 				storage.logger.Error(ErrNotFound.Error())
@@ -107,12 +105,11 @@ func (storage *RuntimeStorage) GetUserURLs(ctx context.Context, userID uint64) (
 
 	userData := make([]model.ResponceUserURLData, 0)
 
-	storageRecords := storage.container.GetAll()
-	for i, v := range storageRecords {
+	storage.container.Range(func(shortURL string, v model.RequestURLData) {
 		if v.UserID == userID && !v.IsDeleted {
-			userData = append(userData, model.ResponceUserURLData{ShortURL: i, OriginalURL: v.OriginalURL})
+			userData = append(userData, model.ResponceUserURLData{ShortURL: shortURL, OriginalURL: v.OriginalURL})
 		}
-	}
+	})
 
 	return userData, nil
 }
@@ -217,6 +214,10 @@ func (storage *RuntimeStorage) loadFromFile() error {
 }
 
 func (storage *RuntimeStorage) saveToFile() error {
+	if len(storage.fileStoragePath) == 0 {
+		return nil
+	}
+
 	file, err := os.OpenFile(storage.fileStoragePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return err

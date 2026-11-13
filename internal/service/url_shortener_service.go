@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/url"
+	"strings"
 
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/model"
@@ -14,9 +15,13 @@ import (
 )
 
 type URLShortenerService struct {
-	shortenerURLs repository.URLStorage
-	URLBaseAddr   string
-	logger        *zap.Logger
+	shortenerURLs  repository.URLStorage
+	shortURLPrefix string
+	logger         *zap.Logger
+}
+
+func (shortenerService *URLShortenerService) buildShortURL(key string) string {
+	return shortenerService.shortURLPrefix + key
 }
 
 func NewURLShortenerService(URLBaseAddr string, URLStorage repository.URLStorage) (*URLShortenerService, error) {
@@ -32,9 +37,9 @@ func NewURLShortenerService(URLBaseAddr string, URLStorage repository.URLStorage
 	}
 
 	URLShortenerService := &URLShortenerService{
-		URLBaseAddr:   URL.String(),
-		shortenerURLs: URLStorage,
-		logger:        shortenerLogger,
+		shortURLPrefix: strings.TrimRight(URL.String(), "/") + "/",
+		shortenerURLs:  URLStorage,
+		logger:         shortenerLogger,
 	}
 
 	return URLShortenerService, nil
@@ -70,11 +75,7 @@ func (shortenerService *URLShortenerService) GetUserURLs(ctx context.Context, us
 	}
 
 	for i := range results {
-		resShortURL, err := url.JoinPath(shortenerService.URLBaseAddr, results[i].ShortURL)
-		if err != nil {
-			return nil, err
-		}
-		results[i].ShortURL = resShortURL
+		results[i].ShortURL = shortenerService.buildShortURL(results[i].ShortURL)
 	}
 
 	return results, nil
@@ -109,11 +110,7 @@ func (shortenerService *URLShortenerService) SetFullURL(ctx context.Context, URL
 		break
 	}
 
-	resShortURL, err := url.JoinPath(shortenerService.URLBaseAddr, responseData.ShortURL)
-	if err != nil {
-		return model.ResponcePostURLData{}, err
-	}
-	responseData.ShortURL = resShortURL
+	responseData.ShortURL = shortenerService.buildShortURL(responseData.ShortURL)
 
 	return responseData, collisionErr
 }
@@ -162,11 +159,7 @@ func (shortenerService *URLShortenerService) SetFullURLBatch(ctx context.Context
 	}
 
 	for i := range responseDataBatch {
-		resShortURL, err := url.JoinPath(shortenerService.URLBaseAddr, responseDataBatch[i].ShortURL)
-		if err != nil {
-			return nil, err
-		}
-		responseDataBatch[i].ShortURL = resShortURL
+		responseDataBatch[i].ShortURL = shortenerService.buildShortURL(responseDataBatch[i].ShortURL)
 	}
 
 	return responseDataBatch, collisionErr

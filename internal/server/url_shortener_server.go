@@ -48,7 +48,7 @@ func StartURLShortenerServer() {
 		storage = st
 	}
 
-	router, err := handler.NewURLShortenerRouter(conf.ServerBaseURL, conf.SecretKey, storage)
+	router, err := handler.NewURLShortenerRouter(conf.ServerBaseURL, conf.SecretKey, storage, conf.AuditServiceParams)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}

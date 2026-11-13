@@ -16,6 +16,11 @@ type PendingMessageProcessorConfig struct {
 	MaxParallelInsertsToQueue uint64
 }
 
+type AuditServiceConfig struct {
+	FilePath string
+	URL      string
+}
+
 type Config struct {
 	ServerListenAddr              string
 	ServerBaseURL                 string
@@ -24,6 +29,7 @@ type Config struct {
 	DBConnectionString            string
 	SecretKey                     []byte
 	PendingMessageProcessorParams PendingMessageProcessorConfig
+	AuditServiceParams            AuditServiceConfig
 }
 
 func InitConfig() Config {
@@ -63,6 +69,8 @@ func setConfigFromArgs(config *Config) {
 	flag.IntVar(&config.PendingMessageProcessorParams.MaxBatchSize, "maxBatchSize", 512, "Max batch size to send messages. Default: 512")
 	flag.Uint64Var(&config.PendingMessageProcessorParams.WorkerPoolSize, "workerPoolSize", 20, "Worker pool size. Default: 20")
 	flag.Uint64Var(&config.PendingMessageProcessorParams.MaxParallelInsertsToQueue, "maxParallelInsertsToQueue", 20, "Maximum parallel inserts to message queue. Default: 20")
+	flag.StringVar(&config.AuditServiceParams.FilePath, "audit-file", "", "Path to audit file's logs")
+	flag.StringVar(&config.AuditServiceParams.URL, "audit-url", "", "URL to audit service's message receiver")
 	flag.Parse()
 
 	config.SecretKey = []byte(secretKey)
@@ -131,6 +139,14 @@ func setConfigFromEnv(config *Config) {
 			log.Fatal(err)
 		}
 		config.PendingMessageProcessorParams.MaxParallelInsertsToQueue = u64
+	}
+
+	if auditFilePath, found := os.LookupEnv("AUDIT_FILE"); found {
+		config.AuditServiceParams.FilePath = auditFilePath
+	}
+
+	if auditURL, found := os.LookupEnv("AUDIT_URL"); found {
+		config.AuditServiceParams.URL = auditURL
 	}
 }
 

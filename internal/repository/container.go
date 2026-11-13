@@ -45,6 +45,15 @@ func (store *Container[T]) ForceSet(key string, value T) {
 	store.container[key] = value
 }
 
+func (store *Container[T]) Range(fn func(key string, value T)) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	for k, v := range store.container {
+		fn(k, v)
+	}
+}
+
 func (store *Container[T]) GetAll() map[string]T {
 	store.mu.Lock()
 	defer store.mu.Unlock()

@@ -8,9 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-resty/resty/v2"
+
 	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/model"
-	"github.com/go-resty/resty/v2"
 )
 
 type auditMessageHandler interface {

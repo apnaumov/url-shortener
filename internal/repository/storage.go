@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apnaumov/url-shortener.git/internal/model"
 	"go.uber.org/zap"
+
+	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
 type URLStorage interface {

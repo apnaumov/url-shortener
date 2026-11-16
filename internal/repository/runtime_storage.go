@@ -9,9 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/model"
-	"go.uber.org/zap"
 )
 
 type RuntimeStorage struct {

@@ -10,10 +10,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/apnaumov/url-shortener.git/internal/config"
-	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/apnaumov/url-shortener.git/internal/config"
+	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
 func TestAuditServiceInit(t *testing.T) {

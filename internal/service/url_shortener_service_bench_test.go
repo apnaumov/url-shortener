@@ -8,11 +8,12 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
 	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 func benchSetErr(b *testing.B, err error) {

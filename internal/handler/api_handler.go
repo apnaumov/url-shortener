@@ -8,10 +8,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/apnaumov/url-shortener.git/internal/model"
-	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
+
+	"github.com/apnaumov/url-shortener.git/internal/model"
+	"github.com/apnaumov/url-shortener.git/internal/repository"
 )
 
 func (router *URLShortenerRouter) setAPIHandlers() {

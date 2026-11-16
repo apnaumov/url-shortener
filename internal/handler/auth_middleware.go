@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/golang-jwt/jwt/v4"
+
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
-	"github.com/golang-jwt/jwt/v4"
 )
 
 type userIDKey struct{}

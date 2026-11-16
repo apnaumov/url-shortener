@@ -8,10 +8,11 @@ import (
 	"net/url"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
-	"go.uber.org/zap"
 )
 
 type URLShortenerService struct {

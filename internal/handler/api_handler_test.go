@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/apnaumov/url-shortener.git/internal/config"
 )
 
 func TestApiPostNewURL(t *testing.T) {

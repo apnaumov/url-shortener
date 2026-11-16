@@ -7,13 +7,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
+
 	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/apnaumov/url-shortener.git/internal/service"
-	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 )
 
 type URLShortenerRouter struct {

@@ -11,12 +11,13 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 
-	urlshortener "github.com/apnaumov/url-shortener.git"
-	"github.com/apnaumov/url-shortener.git/internal/config"
-	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+
+	urlshortener "github.com/apnaumov/url-shortener.git"
+	"github.com/apnaumov/url-shortener.git/internal/config"
+	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
 type DBStorage struct {

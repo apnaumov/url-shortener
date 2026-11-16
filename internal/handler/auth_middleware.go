@@ -13,10 +13,15 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 )
 
+// userIDKey — ключ ID пользователя в контексте запроса.
 type userIDKey struct{}
 
+// tokenExp — срок жизни JWT-токена.
 const tokenExp = time.Hour * 24 * 7
 
+// getAuthMiddleware аутентифицирует пользователя по cookie shortener_token.
+// Если cookie нет или токен невалиден, создаёт нового пользователя и выдаёт новый токен.
+// ID пользователя кладёт в контекст запроса.
 func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler {
 	authLogger := router.requestLogger.Named("Authentification")
 
@@ -76,11 +81,14 @@ func (router *URLShortenerRouter) getAuthMiddleware(h http.Handler) http.Handler
 	})
 }
 
+// jwtClient создаёт и проверяет JWT-токены пользователей.
 type jwtClient struct {
 	storage repository.URLStorage
 	authKey []byte
 }
 
+// NewJWTClient создаёт клиент, подписывающий токены ключом authKey.
+// storage используется для создания новых пользователей.
 func NewJWTClient(storage repository.URLStorage, authKey []byte) *jwtClient {
 	return &jwtClient{
 		storage: storage,
@@ -88,6 +96,8 @@ func NewJWTClient(storage repository.URLStorage, authKey []byte) *jwtClient {
 	}
 }
 
+// BuildToken создаёт нового пользователя в хранилище и возвращает его claims
+// и подписанный токен.
 func (jwtClient *jwtClient) BuildToken(ctx context.Context) (model.Claims, string, error) {
 	userID, err := jwtClient.storage.CreateNewUser(ctx)
 	if err != nil {
@@ -111,6 +121,7 @@ func (jwtClient *jwtClient) BuildToken(ctx context.Context) (model.Claims, strin
 	return claims, tokenString, nil
 }
 
+// ParseToken проверяет подпись и срок действия токена и возвращает его claims.
 func (jwtClient *jwtClient) ParseToken(tokenString string) (model.Claims, error) {
 	claims := model.Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, &claims,
@@ -131,6 +142,7 @@ func (jwtClient *jwtClient) ParseToken(tokenString string) (model.Claims, error)
 	return claims, nil
 }
 
+// getUserIDFromCtx достаёт ID пользователя, положенный auth-мидлварью.
 func getUserIDFromCtx(ctx context.Context) (uint64, error) {
 	rawUserID := ctx.Value(userIDKey{})
 

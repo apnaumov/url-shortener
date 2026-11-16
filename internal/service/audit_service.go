@@ -1,3 +1,4 @@
+// Package service содержит бизнес-логику сокращения URL и сервис аудита.
 package service
 
 import (
@@ -14,15 +15,18 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
+// auditMessageHandler — получатель сообщений аудита.
 type auditMessageHandler interface {
 	HandlerName() string
 	FetchMessage(message model.AuditServiceMessage) error
 }
 
+// AuditService рассылает сообщения аудита всем зарегистрированным получателям (файл, удалённый URL).
 type AuditService struct {
 	handlers []auditMessageHandler
 }
 
+// NewAuditService создаёт сервис по конфигурации. Возвращает ошибку, если не задан ни файл, ни URL.
 func NewAuditService(conf config.AuditServiceConfig) (*AuditService, error) {
 	if len(conf.FilePath) == 0 && len(conf.URL) == 0 {
 		return nil, fmt.Errorf("can't initialize audit service because config is empty")
@@ -41,18 +45,22 @@ func NewAuditService(conf config.AuditServiceConfig) (*AuditService, error) {
 	return service, nil
 }
 
+// registerHandler добавляет получателя сообщений.
 func (service *AuditService) registerHandler(handler auditMessageHandler) {
 	service.handlers = append(service.handlers, handler)
 }
 
+// NotifyShorten отправляет аудит-сообщение о сокращении URL и возвращает ошибки получателей.
 func (service *AuditService) NotifyShorten(userID uint64, originalURL string) []error {
 	return service.notify("shorten", userID, originalURL)
 }
 
+// NotifyFollow отправляет аудит-сообщение о переходе по короткому URL и возвращает ошибки получателей.
 func (service *AuditService) NotifyFollow(userID uint64, originalURL string) []error {
 	return service.notify("follow", userID, originalURL)
 }
 
+// notify формирует сообщение и передаёт его всем получателям, собирая ошибки.
 func (service *AuditService) notify(action string, userID uint64, originalURL string) []error {
 	msg := model.AuditServiceMessage{
 		Timestamp:   time.Now().Unix(),
@@ -72,6 +80,7 @@ func (service *AuditService) notify(action string, userID uint64, originalURL st
 	return errs
 }
 
+// auditRemoteHandler отправляет сообщения аудита POST-запросом на внешний URL.
 type auditRemoteHandler struct {
 	url string
 }
@@ -93,6 +102,7 @@ func (handler *auditRemoteHandler) FetchMessage(message model.AuditServiceMessag
 	return err
 }
 
+// auditFileHandler дописывает сообщения аудита в файл в формате JSON.
 type auditFileHandler struct {
 	filePath string
 	fileMtx  sync.Mutex

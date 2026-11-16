@@ -20,12 +20,15 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
+// DBStorage — хранилище URL в PostgreSQL. Реализует URLStorage.
 type DBStorage struct {
 	db                      *sql.DB
 	logger                  *zap.Logger
 	pendingMessageProcessor *PendingMessageProcessor[DeleteUserURLsDTO]
 }
 
+// NewDBStorage применяет миграции, подключается к БД по connStr
+// и запускает фоновую обработку удаления URL.
 func NewDBStorage(connStr string, messageProcessorConfig *config.PendingMessageProcessorConfig, logger *zap.Logger) (*DBStorage, error) {
 	err := runMigrations(connStr)
 	if err != nil {
@@ -56,7 +59,7 @@ func NewDBStorage(connStr string, messageProcessorConfig *config.PendingMessageP
 	return dbStorage, nil
 }
 
-// Возвращаем только ошибки, касающиеся БД, чтобы повторить операцию в PendingMessageProcessor
+// deleteURLsTickFunc срабатывает по таймеру. Возвращает только ошибки, касающиеся БД, чтобы повторить операцию в PendingMessageProcessor.
 func (storage *DBStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -152,6 +155,8 @@ func (storage *DBStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) error
 	return nil
 }
 
+// GetFullURL возвращает исходный URL по короткому ключу.
+// Возвращает ErrNotFound или ErrDeleted, если записи нет или она удалена.
 func (storage *DBStorage) GetFullURL(ctx context.Context, shortURL string) (string, error) {
 	row := storage.db.QueryRowContext(ctx, getFullURLQuery, shortURL)
 
@@ -173,6 +178,7 @@ func (storage *DBStorage) GetFullURL(ctx context.Context, shortURL string) (stri
 	return fullURL, nil
 }
 
+// GetUserURLs возвращает неудалённые URL пользователя.
 func (storage *DBStorage) GetUserURLs(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error) {
 	rows, err := storage.db.QueryContext(ctx, getFilteredByDeleteUserURLs, userID, false)
 
@@ -204,10 +210,13 @@ func (storage *DBStorage) GetUserURLs(ctx context.Context, userID uint64) ([]mod
 	return usersURLData, nil
 }
 
+// DeleteUserURLs ставит удаление URL в очередь на асинхронную обработку.
 func (storage *DBStorage) DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO) {
 	storage.pendingMessageProcessor.InsertToQueue(deleteUserURLs)
 }
 
+// SetURL сохраняет запись. Возвращает ErrShortURLCollision, если короткий ключ занят,
+// и ErrFullURLCollision (вместе с существующей записью), если такой URL уже сокращён.
 func (storage *DBStorage) SetURL(ctx context.Context, URLRecord model.URLRecord) (model.ResponcePostURLData, error) {
 	tx, err := storage.db.Begin()
 	if err != nil {
@@ -227,6 +236,8 @@ func (storage *DBStorage) SetURL(ctx context.Context, URLRecord model.URLRecord)
 	return responseData, err
 }
 
+// SetURLBatch сохраняет пачку записей в одной транзакции. Записи с занятым коротким
+// ключом возвращаются в UnacceptedURLRecords, при дубликатах URL — ErrFullURLCollision.
 func (storage *DBStorage) SetURLBatch(ctx context.Context, URLRecords []model.URLRecord) ([]model.ResponcePostURLData, UnacceptedURLRecords, error) {
 	tx, err := storage.db.Begin()
 	if err != nil {
@@ -265,6 +276,7 @@ func (storage *DBStorage) SetURLBatch(ctx context.Context, URLRecords []model.UR
 	return responseURLDataBatch, unacceptedURLRecords, collisionErr
 }
 
+// setURLImpl вставляет одну запись в рамках транзакции tx.
 func (storage *DBStorage) setURLImpl(ctx context.Context, tx *sql.Tx, URLRecord model.URLRecord) (model.ResponcePostURLData, error) {
 	shortURLCollision := false
 	row := tx.QueryRowContext(ctx, checkCollisionURL, URLRecord.ShortURL)
@@ -291,15 +303,18 @@ func (storage *DBStorage) setURLImpl(ctx context.Context, tx *sql.Tx, URLRecord 
 	return model.ResponcePostURLData{ShortURL: URLRecord.ShortURL, CorrelationID: URLRecord.URLData.CorrelationID}, nil
 }
 
+// OnServerShutdown останавливает обработку очереди и закрывает соединение с БД.
 func (storage *DBStorage) OnServerShutdown() error {
 	storage.pendingMessageProcessor.Shutdown()
 	return storage.db.Close()
 }
 
+// Ping проверяет соединение с БД.
 func (storage *DBStorage) Ping(ctx context.Context) error {
 	return storage.db.PingContext(ctx)
 }
 
+// CreateNewUser выдаёт новый уникальный ID пользователя из последовательности БД.
 func (storage *DBStorage) CreateNewUser(ctx context.Context) (uint64, error) {
 	var userID uint64
 
@@ -312,6 +327,7 @@ func (storage *DBStorage) CreateNewUser(ctx context.Context) (uint64, error) {
 	return userID, nil
 }
 
+// runMigrations применяет встроенные SQL-миграции к БД.
 func runMigrations(connStr string) error {
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {

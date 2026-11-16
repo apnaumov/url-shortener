@@ -15,6 +15,7 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
+// RuntimeStorage — in-memory хранилище URL с опциональным сохранением в файл. Реализует URLStorage.
 type RuntimeStorage struct {
 	container               *Container[model.RequestURLData]
 	uniqueOriginalURLs      *Container[string]
@@ -24,6 +25,7 @@ type RuntimeStorage struct {
 	logger                  *zap.Logger
 }
 
+// NewRuntimeStorage создаёт хранилище и загружает данные из fileStoragePath, если он задан.
 func NewRuntimeStorage(fileStoragePath string, messageProcessorConfig *config.PendingMessageProcessorConfig, logger *zap.Logger) (*RuntimeStorage, error) {
 	storage := &RuntimeStorage{
 		container:          NewContainer[model.RequestURLData](),
@@ -53,6 +55,7 @@ func NewRuntimeStorage(fileStoragePath string, messageProcessorConfig *config.Pe
 	return storage, nil
 }
 
+// deleteURLsTickFunc помечает URL из пачки сообщений удалёнными.
 func (storage *RuntimeStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) error {
 	for i := range messages {
 		for j := range messages[i].ShortURLs {
@@ -81,6 +84,8 @@ func (storage *RuntimeStorage) deleteURLsTickFunc(messages []DeleteUserURLsDTO) 
 	return nil
 }
 
+// GetFullURL возвращает исходный URL по короткому ключу.
+// Возвращает ErrNotFound или ErrDeleted, если записи нет или она удалена.
 func (storage *RuntimeStorage) GetFullURL(ctx context.Context, shortURL string) (string, error) {
 	if ctx.Err() != nil {
 		return "", ctx.Err()
@@ -99,6 +104,7 @@ func (storage *RuntimeStorage) GetFullURL(ctx context.Context, shortURL string) 
 	return data.OriginalURL, nil
 }
 
+// GetUserURLs возвращает неудалённые URL пользователя.
 func (storage *RuntimeStorage) GetUserURLs(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -115,10 +121,13 @@ func (storage *RuntimeStorage) GetUserURLs(ctx context.Context, userID uint64) (
 	return userData, nil
 }
 
+// DeleteUserURLs ставит удаление URL в очередь на асинхронную обработку.
 func (storage *RuntimeStorage) DeleteUserURLs(deleteUserURLs DeleteUserURLsDTO) {
 	storage.pendingMessageProcessor.InsertToQueue(deleteUserURLs)
 }
 
+// SetURL сохраняет запись. Возвращает ErrShortURLCollision, если короткий ключ занят,
+// и ErrFullURLCollision (вместе с существующей записью), если такой URL уже сокращён.
 func (storage *RuntimeStorage) SetURL(ctx context.Context, URLRecord model.URLRecord) (model.ResponcePostURLData, error) {
 	if ctx.Err() != nil {
 		return model.ResponcePostURLData{}, ctx.Err()
@@ -127,6 +136,7 @@ func (storage *RuntimeStorage) SetURL(ctx context.Context, URLRecord model.URLRe
 	return storage.setURLImpl(URLRecord)
 }
 
+// setURLImpl сохраняет запись без проверки контекста.
 func (storage *RuntimeStorage) setURLImpl(URLRecord model.URLRecord) (model.ResponcePostURLData, error) {
 	existingShortURL, ok := storage.uniqueOriginalURLs.Get(URLRecord.URLData.OriginalURL)
 	if ok {
@@ -148,6 +158,8 @@ func (storage *RuntimeStorage) setURLImpl(URLRecord model.URLRecord) (model.Resp
 	return model.ResponcePostURLData{ShortURL: URLRecord.ShortURL, CorrelationID: URLRecord.URLData.CorrelationID}, nil
 }
 
+// SetURLBatch сохраняет пачку записей. Записи с занятым коротким ключом возвращаются
+// в UnacceptedURLRecords, при дубликатах URL — ErrFullURLCollision.
 func (storage *RuntimeStorage) SetURLBatch(ctx context.Context, URLRecords []model.URLRecord) ([]model.ResponcePostURLData, UnacceptedURLRecords, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
@@ -174,20 +186,24 @@ func (storage *RuntimeStorage) SetURLBatch(ctx context.Context, URLRecords []mod
 	return responseURLDataBatch, unacceptedURLRecords, collisionErr
 }
 
+// OnServerShutdown останавливает обработку очереди и сохраняет данные в файл.
 func (storage *RuntimeStorage) OnServerShutdown() error {
 	storage.pendingMessageProcessor.Shutdown()
 	return storage.saveToFile()
 }
 
+// Ping всегда возвращает nil: in-memory хранилище доступно всегда.
 func (storage *RuntimeStorage) Ping(ctx context.Context) error {
 	return nil
 }
 
+// CreateNewUser выдаёт следующий ID пользователя.
 func (storage *RuntimeStorage) CreateNewUser(ctx context.Context) (uint64, error) {
 	userID := storage.currentUserID.Add(1)
 	return userID, nil
 }
 
+// loadFromFile загружает данные из файла хранилища (файл создаётся, если его нет).
 func (storage *RuntimeStorage) loadFromFile() error {
 	file, err := os.OpenFile(storage.fileStoragePath, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
@@ -214,6 +230,7 @@ func (storage *RuntimeStorage) loadFromFile() error {
 	return nil
 }
 
+// saveToFile записывает все данные в файл хранилища, если путь к нему задан.
 func (storage *RuntimeStorage) saveToFile() error {
 	if len(storage.fileStoragePath) == 0 {
 		return nil

@@ -1,3 +1,4 @@
+// Package server запускает HTTP-сервер сервиса сокращения URL.
 package server
 
 import (
@@ -18,6 +19,8 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/repository"
 )
 
+// StartURLShortenerServer инициализирует конфигурацию, логгер и хранилище (PostgreSQL или in-memory),
+// запускает сервер и блокируется до SIGINT/SIGTERM, после чего завершает работу корректно.
 func StartURLShortenerServer() {
 	conf := config.InitConfig()
 	err := logger.SetLogDirectory(conf.LogDirectory)

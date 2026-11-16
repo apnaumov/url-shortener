@@ -1,3 +1,4 @@
+// Command shortener запускает сервис сокращения URL.
 package main
 
 import (

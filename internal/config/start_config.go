@@ -1,3 +1,4 @@
+// Package config читает настройки сервиса из аргументов командной строки и окружения.
 package config
 
 import (
@@ -8,6 +9,7 @@ import (
 	"strconv"
 )
 
+// PendingMessageProcessorConfig определяет настройки для механизма отложенной обработки сообщений.
 type PendingMessageProcessorConfig struct {
 	TickTime                  uint64
 	BufferSize                uint64
@@ -16,11 +18,13 @@ type PendingMessageProcessorConfig struct {
 	MaxParallelInsertsToQueue uint64
 }
 
+// AuditServiceConfig определяет настройки для сервиса аудита
 type AuditServiceConfig struct {
 	FilePath string
 	URL      string
 }
 
+// Config определяет настройки для всего сервиса
 type Config struct {
 	ServerListenAddr              string
 	ServerBaseURL                 string
@@ -32,6 +36,8 @@ type Config struct {
 	AuditServiceParams            AuditServiceConfig
 }
 
+// InitConfig инициализирует настройки из аргументов командной строки и переменных окружения.
+// Переменные окружения имеют приоритет над аргументами командной строки.
 func InitConfig() Config {
 	config := Config{}
 
@@ -49,6 +55,7 @@ func InitConfig() Config {
 	return config
 }
 
+// setConfigFromArgs заполняет config из флагов командной строки.
 func setConfigFromArgs(config *Config) {
 	const defaultListen = ":8080"
 	const defaultURL = "http://localhost:8080"
@@ -76,6 +83,7 @@ func setConfigFromArgs(config *Config) {
 	config.SecretKey = []byte(secretKey)
 }
 
+// setConfigFromEnv перезаписывает config значениями переменных окружения.
 func setConfigFromEnv(config *Config) {
 	if listenAddr, found := os.LookupEnv("SERVER_ADDRESS"); found {
 		config.ServerListenAddr = listenAddr
@@ -150,6 +158,7 @@ func setConfigFromEnv(config *Config) {
 	}
 }
 
+// generateSecretKey возвращает size случайных байт.
 func generateSecretKey(size int) ([]byte, error) {
 	b := make([]byte, size)
 	_, err := rand.Read(b)

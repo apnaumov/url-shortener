@@ -19,6 +19,7 @@ type (
 	}
 )
 
+// Write пишет ответ и накапливает его размер.
 func (r *loggingResponseWriter) Write(b []byte) (int, error) {
 	// записываем ответ, используя оригинальный http.ResponseWriter
 	size, err := r.ResponseWriter.Write(b)
@@ -26,12 +27,14 @@ func (r *loggingResponseWriter) Write(b []byte) (int, error) {
 	return size, err
 }
 
+// WriteHeader пишет код статуса и запоминает его.
 func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	// записываем код статуса, используя оригинальный http.ResponseWriter
 	r.ResponseWriter.WriteHeader(statusCode)
 	r.responseData.status = statusCode // захватываем код статуса
 }
 
+// getLoggerMiddleware логирует URI, метод, время обработки, статус и размер ответа каждого запроса.
 func (router *URLShortenerRouter) getLoggerMiddleware(h http.Handler) http.Handler {
 	httpLogger := router.requestLogger.Named("http")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

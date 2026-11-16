@@ -1,3 +1,4 @@
+// Package handler содержит HTTP-роутер сервиса сокращения URL, обработчики и мидлвари.
 package handler
 
 import (
@@ -17,6 +18,7 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/service"
 )
 
+// URLShortenerRouter — HTTP-роутер сервиса сокращения URL.
 type URLShortenerRouter struct {
 	Mux           *chi.Mux
 	service       *service.URLShortenerService
@@ -25,6 +27,9 @@ type URLShortenerRouter struct {
 	auditService  *service.AuditService
 }
 
+// NewURLShortenerRouter создаёт роутер, инициализирует сервисы и регистрирует
+// мидлвари и маршруты. Сервис аудита опционален: при ошибке его инициализации
+// пишется предупреждение, а аудит отключается.
 func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage repository.URLStorage, auditConf config.AuditServiceConfig) (*URLShortenerRouter, error) {
 	URLShortenerRouter := &URLShortenerRouter{}
 	URLShortenerRouter.Mux = chi.NewRouter()
@@ -64,6 +69,7 @@ func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage reposi
 	return URLShortenerRouter, nil
 }
 
+// OnShutdown освобождает ресурсы сервиса и хранилища при остановке сервера.
 func (router *URLShortenerRouter) OnShutdown() {
 	if err := router.service.OnServerShutdown(); err != nil {
 		router.requestLogger.Warn("Error while save service's configuration on shutdown", zap.String("error", err.Error()))
@@ -72,10 +78,13 @@ func (router *URLShortenerRouter) OnShutdown() {
 	}
 }
 
+// methodNotAllowed отвечает 400 на запросы с неподдерживаемым методом.
 func (router *URLShortenerRouter) methodNotAllowed(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Method not allowed", http.StatusBadRequest)
 }
 
+// postNewURL обрабатывает POST /: сокращает URL из text/plain тела.
+// Возвращает 201 или 409, если URL уже был сокращён.
 func (router *URLShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "text/plain" {
 		http.Error(w, "Content-type incorrect", http.StatusBadRequest)
@@ -136,6 +145,8 @@ func (router *URLShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// getFullURL обрабатывает GET /{shortPath}: редирект (307) на исходный URL.
+// Для удалённой ссылки возвращает 410, для неизвестной — 400.
 func (router *URLShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Request) {
 	userID, err := getUserIDFromCtx(r.Context())
 	if err != nil {
@@ -172,6 +183,7 @@ func (router *URLShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// pingDB обрабатывает GET /ping: проверяет доступность хранилища.
 func (router *URLShortenerRouter) pingDB(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()

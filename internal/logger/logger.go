@@ -1,3 +1,4 @@
+// Package logger создаёт zap-логгеры приложения.
 package logger
 
 import (
@@ -11,6 +12,8 @@ import (
 
 var logDirectory string = ""
 
+// SetLogDirectory задаёт каталог для лог-файлов и создаёт его.
+// Пустое значение означает вывод в stdout.
 func SetLogDirectory(logDir string) error {
 	logDirectory = logDir
 
@@ -21,7 +24,8 @@ func SetLogDirectory(logDir string) error {
 	return nil
 }
 
-// initialize logger with loggerName
+// InitializeRootLogger создаёт логгер с именем loggerName и уровнем level.
+// Если задан каталог логов, пишет в файл <loggerName>.log, иначе в stdout.
 func InitializeRootLogger(loggerName string, level string) (*zap.Logger, error) {
 	lvl, err := zap.ParseAtomicLevel(level)
 

@@ -48,9 +48,11 @@ func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage reposi
 		return nil, err
 	}
 
-	audit, err := service.NewAuditService(auditConf)
+	audit, err := service.NewAuditService(auditConf, func(err error) {
+		URLShortenerRouter.requestLogger.Error("audit message delivery failed", zap.Error(err))
+	})
 	if err != nil {
-		URLShortenerRouter.requestLogger.Warn("Can't initialize audit service", zap.Error(err))
+		URLShortenerRouter.requestLogger.Warn("can't initialize audit service", zap.Error(err))
 	}
 
 	URLShortenerRouter.service = shortener
@@ -72,9 +74,17 @@ func NewURLShortenerRouter(URLBaseAddr string, authKey []byte, URLStorage reposi
 // OnShutdown освобождает ресурсы сервиса и хранилища при остановке сервера.
 func (router *URLShortenerRouter) OnShutdown() {
 	if err := router.service.OnServerShutdown(); err != nil {
-		router.requestLogger.Warn("Error while save service's configuration on shutdown", zap.String("error", err.Error()))
+		router.requestLogger.Warn("Error while save URL shortener service's configuration on shutdown", zap.String("error", err.Error()))
 	} else {
-		router.requestLogger.Info("Service's configuration saved on shutdown")
+		router.requestLogger.Info("URL shortener service's configuration saved on shutdown")
+	}
+
+	if router.auditService != nil {
+		if err := router.auditService.OnServerShutdown(); err != nil {
+			router.requestLogger.Warn("Error while save audit service's configuration on shutdown", zap.String("error", err.Error()))
+		} else {
+			router.requestLogger.Info("Audit service's configuration saved on shutdown")
+		}
 	}
 }
 
@@ -137,11 +147,19 @@ func (router *URLShortenerRouter) postNewURL(w http.ResponseWriter, r *http.Requ
 
 	w.Write([]byte(responseData.ShortURL))
 
-	if status == http.StatusCreated && router.auditService != nil {
-		errs := router.auditService.NotifyShorten(userID, originalURL)
-		for i := range errs {
-			router.requestLogger.Error("Audit service error.", zap.String("Error", errs[i].Error()))
-		}
+	if status == http.StatusCreated {
+		router.notifyAudit(func(a *service.AuditService) error { return a.NotifyShorten(userID, originalURL) })
+	}
+}
+
+// notifyAudit ставит аудит-сообщение в очередь, если сервис аудита включён, и логирует ошибку постановки.
+func (router *URLShortenerRouter) notifyAudit(notify func(a *service.AuditService) error) {
+	if router.auditService == nil {
+		return
+	}
+
+	if err := notify(router.auditService); err != nil {
+		router.requestLogger.Error("audit service error", zap.Error(err))
 	}
 }
 
@@ -175,12 +193,7 @@ func (router *URLShortenerRouter) getFullURL(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Location", URLData)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 
-	if router.auditService != nil {
-		errs := router.auditService.NotifyFollow(userID, URLData)
-		for i := range errs {
-			router.requestLogger.Error("Audit service error.", zap.String("Error", errs[i].Error()))
-		}
-	}
+	router.notifyAudit(func(a *service.AuditService) error { return a.NotifyFollow(userID, URLData) })
 }
 
 // pingDB обрабатывает GET /ping: проверяет доступность хранилища.

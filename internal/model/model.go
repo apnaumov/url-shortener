@@ -57,6 +57,6 @@ type URLDataToSaveToFile struct {
 type AuditServiceMessage struct {
 	Timestamp   int64  `json:"ts"`
 	Action      string `json:"action"`
-	UserID      uint64 `json:"user_id"`
+	UserID      string `json:"user_id"`
 	OriginalURL string `json:"url"`
 }

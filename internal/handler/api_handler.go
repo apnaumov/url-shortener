@@ -13,6 +13,7 @@ import (
 
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
+	"github.com/apnaumov/url-shortener.git/internal/service"
 )
 
 // setAPIHandlers регистрирует маршруты JSON API под префиксом /api.
@@ -149,11 +150,8 @@ func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if status == http.StatusCreated && router.auditService != nil {
-		errs := router.auditService.NotifyShorten(userID, postURL.URL)
-		for i := range errs {
-			router.requestLogger.Error("Audit service error.", zap.String("Error", errs[i].Error()))
-		}
+	if status == http.StatusCreated {
+		router.notifyAudit(func(a *service.AuditService) error { return a.NotifyShorten(userID, postURL.URL) })
 	}
 }
 

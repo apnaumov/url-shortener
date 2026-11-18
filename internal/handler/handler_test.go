@@ -49,6 +49,7 @@ func setUpServerWithAudit(t *testing.T, auditConf config.AuditServiceConfig) *ht
 	router, err := NewURLShortenerRouter("http://"+ts.Listener.Addr().String(), []byte("mysupersecretkey"), storage, auditConf)
 	require.NoError(t, err)
 	ts.Config.Handler = router.Mux
+	t.Cleanup(router.OnShutdown)
 
 	return ts
 }

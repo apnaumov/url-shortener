@@ -4,8 +4,10 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,32 +17,56 @@ import (
 	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
+// auditQueueSize — размер буфера очереди сообщений аудита.
+const auditQueueSize = 1024
+
 // auditMessageHandler — получатель сообщений аудита.
 type auditMessageHandler interface {
 	HandlerName() string
 	FetchMessage(message model.AuditServiceMessage) error
+	OnServerShutdown() error
 }
 
 // AuditService рассылает сообщения аудита всем зарегистрированным получателям (файл, удалённый URL).
+// Сообщения помещаются в очередь и обрабатываются фоновым воркером, чтобы не блокировать обработчики запросов.
 type AuditService struct {
 	handlers []auditMessageHandler
+
+	queue   chan model.AuditServiceMessage
+	onError func(err error)
+	wg      sync.WaitGroup
+	done    chan struct{}
 }
 
-// NewAuditService создаёт сервис по конфигурации. Возвращает ошибку, если не задан ни файл, ни URL.
-func NewAuditService(conf config.AuditServiceConfig) (*AuditService, error) {
+// NewAuditService создаёт сервис по конфигурации и запускает фонового воркера.
+// onError вызывается для каждой ошибки доставки сообщения получателю (может быть nil).
+func NewAuditService(conf config.AuditServiceConfig, onError func(err error)) (*AuditService, error) {
 	if len(conf.FilePath) == 0 && len(conf.URL) == 0 {
 		return nil, fmt.Errorf("can't initialize audit service because config is empty")
 	}
 
-	service := &AuditService{handlers: make([]auditMessageHandler, 0)}
+	service := &AuditService{
+		handlers: make([]auditMessageHandler, 0),
+		queue:    make(chan model.AuditServiceMessage, auditQueueSize),
+		onError:  onError,
+		done:     make(chan struct{}),
+	}
 
 	if len(conf.FilePath) != 0 {
-		service.registerHandler(newAuditFileHandler(conf.FilePath))
+		fileHandler, err := newAuditFileHandler(conf.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("can't initialize audit file handler: %w", err)
+		}
+
+		service.registerHandler(fileHandler)
 	}
 
 	if len(conf.URL) != 0 {
 		service.registerHandler(newAuditRemoteHandler(conf.URL))
 	}
+
+	service.wg.Add(1)
+	go service.worker()
 
 	return service, nil
 }
@@ -50,43 +76,96 @@ func (service *AuditService) registerHandler(handler auditMessageHandler) {
 	service.handlers = append(service.handlers, handler)
 }
 
-// NotifyShorten отправляет аудит-сообщение о сокращении URL и возвращает ошибки получателей.
-func (service *AuditService) NotifyShorten(userID uint64, originalURL string) []error {
+// NotifyShorten ставит в очередь аудит-сообщение о сокращении URL.
+func (service *AuditService) NotifyShorten(userID uint64, originalURL string) error {
 	return service.notify("shorten", userID, originalURL)
 }
 
-// NotifyFollow отправляет аудит-сообщение о переходе по короткому URL и возвращает ошибки получателей.
-func (service *AuditService) NotifyFollow(userID uint64, originalURL string) []error {
+// NotifyFollow ставит в очередь аудит-сообщение о переходе по короткому URL.
+func (service *AuditService) NotifyFollow(userID uint64, originalURL string) error {
 	return service.notify("follow", userID, originalURL)
 }
 
-// notify формирует сообщение и передаёт его всем получателям, собирая ошибки.
-func (service *AuditService) notify(action string, userID uint64, originalURL string) []error {
+// notify формирует сообщение и неблокирующе помещает его в очередь.
+func (service *AuditService) notify(action string, userID uint64, originalURL string) error {
 	msg := model.AuditServiceMessage{
 		Timestamp:   time.Now().Unix(),
 		Action:      action,
-		UserID:      userID,
+		UserID:      strconv.FormatUint(userID, 10),
 		OriginalURL: originalURL,
 	}
+
+	select {
+	case <-service.done:
+		return fmt.Errorf("audit service is stopped")
+	default:
+	}
+
+	// Тут возможна гонка, при которой сервису уже послали сигнал о закрытии, он дочитал очередь и воркер вырубился,
+	// но notify только потом отправляет в очередь сообщение, из-за этого оно может потеряться. Считаем это нормальным и не критичным.
+	select {
+	case service.queue <- msg:
+		return nil
+	default:
+		return fmt.Errorf("audit queue is full, %q message dropped", action)
+	}
+}
+
+// worker последовательно доставляет сообщения из очереди всем получателям.
+func (service *AuditService) worker() {
+	defer service.wg.Done()
+
+	for {
+		select {
+		case msg := <-service.queue:
+			service.deliver(msg)
+		case <-service.done:
+			// при остановке доставляем всё, что осталось в очереди
+			for {
+				select {
+				case msg := <-service.queue:
+					service.deliver(msg)
+				default:
+					return
+				}
+			}
+		}
+	}
+}
+
+// deliver передаёт сообщение всем получателям.
+func (service *AuditService) deliver(msg model.AuditServiceMessage) {
+	for i := range service.handlers {
+		if err := service.handlers[i].FetchMessage(msg); err != nil && service.onError != nil {
+			service.onError(fmt.Errorf("error while fetching %q message in handler %q: %w", msg.Action, service.handlers[i].HandlerName(), err))
+		}
+	}
+}
+
+// OnServerShutdown дожидается обработки очереди и запускает graceful-shutdown методы хэндлеров.
+func (service *AuditService) OnServerShutdown() error {
+	close(service.done)
+
+	service.wg.Wait()
 
 	errs := make([]error, 0)
 
 	for i := range service.handlers {
-		if err := service.handlers[i].FetchMessage(msg); err != nil {
-			errs = append(errs, fmt.Errorf("error while fetching %q message in handler %q. Error: %w", action, service.handlers[i].HandlerName(), err))
+		if err := service.handlers[i].OnServerShutdown(); err != nil {
+			errs = append(errs, fmt.Errorf("handler %q: %w", service.handlers[i].HandlerName(), err))
 		}
 	}
 
-	return errs
+	return errors.Join(errs...)
 }
 
 // auditRemoteHandler отправляет сообщения аудита POST-запросом на внешний URL.
 type auditRemoteHandler struct {
-	url string
+	client *resty.Client
 }
 
 func newAuditRemoteHandler(URL string) *auditRemoteHandler {
-	return &auditRemoteHandler{url: URL}
+	return &auditRemoteHandler{client: resty.New().SetBaseURL(URL)}
 }
 
 func (handler *auditRemoteHandler) HandlerName() string {
@@ -97,19 +176,35 @@ func (handler *auditRemoteHandler) FetchMessage(message model.AuditServiceMessag
 	reqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := resty.New().R().SetContext(reqCtx).SetBody(message).Post(handler.url)
+	resp, err := handler.client.R().SetContext(reqCtx).SetBody(message).Post("")
+	if err != nil {
+		return err
+	}
 
-	return err
+	if resp.IsError() {
+		return fmt.Errorf("audit receiver returned status %d", resp.StatusCode())
+	}
+
+	return nil
+}
+
+func (handler *auditRemoteHandler) OnServerShutdown() error {
+	return nil
 }
 
 // auditFileHandler дописывает сообщения аудита в файл в формате JSON.
 type auditFileHandler struct {
-	filePath string
 	fileMtx  sync.Mutex
+	fileDesc *os.File
 }
 
-func newAuditFileHandler(filePath string) *auditFileHandler {
-	return &auditFileHandler{filePath: filePath}
+func newAuditFileHandler(filePath string) (*auditFileHandler, error) {
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	return &auditFileHandler{fileDesc: f}, nil
 }
 
 func (handler *auditFileHandler) HandlerName() string {
@@ -120,15 +215,12 @@ func (handler *auditFileHandler) FetchMessage(message model.AuditServiceMessage)
 	handler.fileMtx.Lock()
 	defer handler.fileMtx.Unlock()
 
-	f, err := os.OpenFile(handler.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+	return json.NewEncoder(handler.fileDesc).Encode(message)
+}
 
-	if err := json.NewEncoder(f).Encode(message); err != nil {
-		return err
-	}
+func (handler *auditFileHandler) OnServerShutdown() error {
+	handler.fileMtx.Lock()
+	defer handler.fileMtx.Unlock()
 
-	return nil
+	return handler.fileDesc.Close()
 }

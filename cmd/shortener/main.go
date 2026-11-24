@@ -2,11 +2,14 @@
 package main
 
 import (
+	"log"
 	_ "net/http/pprof"
 
 	"github.com/apnaumov/url-shortener.git/internal/server"
 )
 
 func main() {
-	server.StartURLShortenerServer()
+	if err := server.StartURLShortenerServer(); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -6,10 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apnaumov/url-shortener.git/internal/model"
 	"go.uber.org/zap"
+
+	"github.com/apnaumov/url-shortener.git/internal/model"
 )
 
+// URLStorage — интерфейс хранилища коротких URL и пользователей.
 type URLStorage interface {
 	GetFullURL(ctx context.Context, shortURL string) (string, error)
 	GetUserURLs(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error)
@@ -21,13 +23,16 @@ type URLStorage interface {
 	Ping(ctx context.Context) error
 }
 
+// UnacceptedURLRecords — записи, не сохранённые из-за коллизии короткого ключа.
 type UnacceptedURLRecords []model.URLRecord
 
+// DeleteUserURLsDTO — запрос на удаление коротких URL пользователя.
 type DeleteUserURLsDTO struct {
 	UserID    uint64
 	ShortURLs []string
 }
 
+// Ошибки хранилища.
 var (
 	ErrShortURLCollision = errors.New("storage already have this short_url")
 	ErrNotFound          = errors.New("can't find record")
@@ -36,6 +41,8 @@ var (
 	ErrFullURLCollision  = errors.New("storage already have this URL(s)")
 )
 
+// PendingMessageProcessor накапливает сообщения в очереди и обрабатывает их пачками
+// пулом воркеров: по достижении maxBatchSize или по тику таймера.
 type PendingMessageProcessor[T any] struct {
 	messageQueue   chan T
 	tickTime       time.Duration
@@ -48,6 +55,8 @@ type PendingMessageProcessor[T any] struct {
 	wg             sync.WaitGroup
 }
 
+// NewPendingMessageProcessor создаёт процессор. tickFunc обрабатывает пачку сообщений;
+// при ошибке пачка сохраняется и обрабатывается повторно.
 func NewPendingMessageProcessor[T any](tick time.Duration, bufferSize uint64, maxBatchSize int, workerPoolSize uint64, insertSemSize uint64,
 	tickFunc func(messages []T) error, logger *zap.Logger) *PendingMessageProcessor[T] {
 
@@ -63,6 +72,7 @@ func NewPendingMessageProcessor[T any](tick time.Duration, bufferSize uint64, ma
 	}
 }
 
+// Run запускает воркеров.
 func (processor *PendingMessageProcessor[T]) Run() {
 	for range processor.workerPoolSize {
 		processor.wg.Go(func() {
@@ -103,11 +113,14 @@ func (processor *PendingMessageProcessor[T]) Run() {
 	}
 }
 
+// Shutdown останавливает воркеров, дообработав накопленные сообщения, и ждёт их завершения.
 func (processor *PendingMessageProcessor[T]) Shutdown() {
 	close(processor.stopSig)
 	processor.wg.Wait()
 }
 
+// InsertToQueue добавляет сообщение в очередь, не блокируя вызывающего
+// (число параллельных вставок ограничено).
 func (processor *PendingMessageProcessor[T]) InsertToQueue(message T) {
 	processor.insertSem <- struct{}{}
 

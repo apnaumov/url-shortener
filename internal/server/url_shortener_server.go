@@ -1,3 +1,4 @@
+// Package server запускает HTTP-сервер сервиса сокращения URL.
 package server
 
 import (
@@ -10,13 +11,16 @@ import (
 	"syscall"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/apnaumov/url-shortener.git/internal/config"
 	"github.com/apnaumov/url-shortener.git/internal/handler"
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
-	"go.uber.org/zap"
 )
 
+// StartURLShortenerServer инициализирует конфигурацию, логгер и хранилище (PostgreSQL или in-memory),
+// запускает сервер и блокируется до SIGINT/SIGTERM, после чего завершает работу корректно.
 func StartURLShortenerServer() {
 	conf := config.InitConfig()
 	err := logger.SetLogDirectory(conf.LogDirectory)
@@ -48,7 +52,7 @@ func StartURLShortenerServer() {
 		storage = st
 	}
 
-	router, err := handler.NewURLShortenerRouter(conf.ServerBaseURL, conf.SecretKey, storage)
+	router, err := handler.NewURLShortenerRouter(conf.ServerBaseURL, conf.SecretKey, storage, conf.AuditServiceParams)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}

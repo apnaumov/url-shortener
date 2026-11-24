@@ -1,3 +1,4 @@
+// Package config читает настройки сервиса из аргументов командной строки и окружения.
 package config
 
 import (
@@ -8,6 +9,7 @@ import (
 	"strconv"
 )
 
+// PendingMessageProcessorConfig определяет настройки для механизма отложенной обработки сообщений.
 type PendingMessageProcessorConfig struct {
 	TickTime                  uint64
 	BufferSize                uint64
@@ -16,6 +18,13 @@ type PendingMessageProcessorConfig struct {
 	MaxParallelInsertsToQueue uint64
 }
 
+// AuditServiceConfig определяет настройки для сервиса аудита
+type AuditServiceConfig struct {
+	FilePath string
+	URL      string
+}
+
+// Config определяет настройки для всего сервиса
 type Config struct {
 	ServerListenAddr              string
 	ServerBaseURL                 string
@@ -24,8 +33,11 @@ type Config struct {
 	DBConnectionString            string
 	SecretKey                     []byte
 	PendingMessageProcessorParams PendingMessageProcessorConfig
+	AuditServiceParams            AuditServiceConfig
 }
 
+// InitConfig инициализирует настройки из аргументов командной строки и переменных окружения.
+// Переменные окружения имеют приоритет над аргументами командной строки.
 func InitConfig() Config {
 	config := Config{}
 
@@ -43,6 +55,7 @@ func InitConfig() Config {
 	return config
 }
 
+// setConfigFromArgs заполняет config из флагов командной строки.
 func setConfigFromArgs(config *Config) {
 	const defaultListen = ":8080"
 	const defaultURL = "http://localhost:8080"
@@ -63,11 +76,14 @@ func setConfigFromArgs(config *Config) {
 	flag.IntVar(&config.PendingMessageProcessorParams.MaxBatchSize, "maxBatchSize", 512, "Max batch size to send messages. Default: 512")
 	flag.Uint64Var(&config.PendingMessageProcessorParams.WorkerPoolSize, "workerPoolSize", 20, "Worker pool size. Default: 20")
 	flag.Uint64Var(&config.PendingMessageProcessorParams.MaxParallelInsertsToQueue, "maxParallelInsertsToQueue", 20, "Maximum parallel inserts to message queue. Default: 20")
+	flag.StringVar(&config.AuditServiceParams.FilePath, "audit-file", "", "Path to audit file's logs")
+	flag.StringVar(&config.AuditServiceParams.URL, "audit-url", "", "URL to audit service's message receiver")
 	flag.Parse()
 
 	config.SecretKey = []byte(secretKey)
 }
 
+// setConfigFromEnv перезаписывает config значениями переменных окружения.
 func setConfigFromEnv(config *Config) {
 	if listenAddr, found := os.LookupEnv("SERVER_ADDRESS"); found {
 		config.ServerListenAddr = listenAddr
@@ -132,8 +148,17 @@ func setConfigFromEnv(config *Config) {
 		}
 		config.PendingMessageProcessorParams.MaxParallelInsertsToQueue = u64
 	}
+
+	if auditFilePath, found := os.LookupEnv("AUDIT_FILE"); found {
+		config.AuditServiceParams.FilePath = auditFilePath
+	}
+
+	if auditURL, found := os.LookupEnv("AUDIT_URL"); found {
+		config.AuditServiceParams.URL = auditURL
+	}
 }
 
+// generateSecretKey возвращает size случайных байт.
 func generateSecretKey(size int) ([]byte, error) {
 	b := make([]byte, size)
 	_, err := rand.Read(b)

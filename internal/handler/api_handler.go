@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/apnaumov/url-shortener.git/internal/model"
-	"github.com/apnaumov/url-shortener.git/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
+
+	"github.com/apnaumov/url-shortener.git/internal/model"
+	"github.com/apnaumov/url-shortener.git/internal/repository"
+	"github.com/apnaumov/url-shortener.git/internal/service"
 )
 
+// setAPIHandlers регистрирует маршруты JSON API под префиксом /api.
 func (router *URLShortenerRouter) setAPIHandlers() {
 	router.Mux.Route("/api", func(r chi.Router) {
 		r.Route("/shorten", func(r chi.Router) {
@@ -28,6 +31,8 @@ func (router *URLShortenerRouter) setAPIHandlers() {
 	})
 }
 
+// apiGetUserURLs обрабатывает GET /api/user/urls: возвращает список URL пользователя
+// или 204, если он пуст.
 func (router *URLShortenerRouter) apiGetUserURLs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -61,6 +66,8 @@ func (router *URLShortenerRouter) apiGetUserURLs(w http.ResponseWriter, r *http.
 	}
 }
 
+// apiDelUserURLs обрабатывает DELETE /api/user/urls: принимает список коротких URL
+// и помечает их удалёнными асинхронно (202).
 func (router *URLShortenerRouter) apiDelUserURLs(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -87,6 +94,8 @@ func (router *URLShortenerRouter) apiDelUserURLs(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// apiPostURL обрабатывает POST /api/shorten: сокращает один URL из JSON-тела.
+// Возвращает 201 или 409, если URL уже был сокращён.
 func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -140,8 +149,14 @@ func (router *URLShortenerRouter) apiPostURL(w http.ResponseWriter, r *http.Requ
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+
+	if status == http.StatusCreated {
+		router.notifyAudit(func(a *service.AuditService) error { return a.NotifyShorten(userID, postURL.URL) })
+	}
 }
 
+// apiPostURLBatch обрабатывает POST /api/shorten/batch: сокращает пачку URL.
+// Возвращает 201 или 409, если часть URL уже была сокращена.
 func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -196,6 +211,8 @@ func (router *URLShortenerRouter) apiPostURLBatch(w http.ResponseWriter, r *http
 	}
 }
 
+// checkJSONRequest проверяет Content-Type и декодирует JSON-тело в v.
+// При ошибке сама пишет ответ и возвращает false.
 func (router *URLShortenerRouter) checkJSONRequest(w http.ResponseWriter, r *http.Request, v any) bool {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-type incorrect", http.StatusBadRequest)

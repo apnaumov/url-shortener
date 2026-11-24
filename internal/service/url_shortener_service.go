@@ -6,19 +6,28 @@ import (
 	"fmt"
 	"math/rand"
 	"net/url"
+	"strings"
+
+	"go.uber.org/zap"
 
 	"github.com/apnaumov/url-shortener.git/internal/logger"
 	"github.com/apnaumov/url-shortener.git/internal/model"
 	"github.com/apnaumov/url-shortener.git/internal/repository"
-	"go.uber.org/zap"
 )
 
+// URLShortenerService реализует логику сокращения URL поверх URLStorage.
 type URLShortenerService struct {
-	shortenerURLs repository.URLStorage
-	URLBaseAddr   string
-	logger        *zap.Logger
+	shortenerURLs  repository.URLStorage
+	shortURLPrefix string
+	logger         *zap.Logger
 }
 
+// buildShortURL добавляет к ключу базовый адрес сервиса.
+func (shortenerService *URLShortenerService) buildShortURL(key string) string {
+	return shortenerService.shortURLPrefix + key
+}
+
+// NewURLShortenerService создаёт сервис; URLBaseAddr — базовый адрес коротких ссылок.
 func NewURLShortenerService(URLBaseAddr string, URLStorage repository.URLStorage) (*URLShortenerService, error) {
 	URL, err := url.Parse(URLBaseAddr)
 	if err != nil {
@@ -32,22 +41,25 @@ func NewURLShortenerService(URLBaseAddr string, URLStorage repository.URLStorage
 	}
 
 	URLShortenerService := &URLShortenerService{
-		URLBaseAddr:   URL.String(),
-		shortenerURLs: URLStorage,
-		logger:        shortenerLogger,
+		shortURLPrefix: strings.TrimRight(URL.String(), "/") + "/",
+		shortenerURLs:  URLStorage,
+		logger:         shortenerLogger,
 	}
 
 	return URLShortenerService, nil
 }
 
+// GetStorage возвращает используемое хранилище.
 func (shortenerService *URLShortenerService) GetStorage() repository.URLStorage {
 	return shortenerService.shortenerURLs
 }
 
+// OnServerShutdown передаёт сигнал остановки хранилищу.
 func (shortenerService *URLShortenerService) OnServerShutdown() error {
 	return shortenerService.shortenerURLs.OnServerShutdown()
 }
 
+// GetFullURL возвращает исходный URL по короткому ключу.
 func (shortenerService *URLShortenerService) GetFullURL(ctx context.Context, shortURL string) (string, error) {
 	v, err := shortenerService.shortenerURLs.GetFullURL(ctx, shortURL)
 	if err != nil {
@@ -63,6 +75,7 @@ func (shortenerService *URLShortenerService) GetFullURL(ctx context.Context, sho
 	return v, nil
 }
 
+// GetUserURLs возвращает URL пользователя с полными короткими адресами.
 func (shortenerService *URLShortenerService) GetUserURLs(ctx context.Context, userID uint64) ([]model.ResponceUserURLData, error) {
 	results, err := shortenerService.shortenerURLs.GetUserURLs(ctx, userID)
 	if err != nil {
@@ -70,20 +83,19 @@ func (shortenerService *URLShortenerService) GetUserURLs(ctx context.Context, us
 	}
 
 	for i := range results {
-		resShortURL, err := url.JoinPath(shortenerService.URLBaseAddr, results[i].ShortURL)
-		if err != nil {
-			return nil, err
-		}
-		results[i].ShortURL = resShortURL
+		results[i].ShortURL = shortenerService.buildShortURL(results[i].ShortURL)
 	}
 
 	return results, nil
 }
 
+// DeleteUserURLs запрашивает асинхронное удаление коротких URL пользователя.
 func (shortenerService *URLShortenerService) DeleteUserURLs(userID uint64, shortURLs []string) {
 	shortenerService.shortenerURLs.DeleteUserURLs(repository.DeleteUserURLsDTO{UserID: userID, ShortURLs: shortURLs})
 }
 
+// SetFullURL генерирует короткий ключ и сохраняет URL, повторяя попытку при коллизии ключа.
+// Если URL уже сокращён, возвращает существующую ссылку и repository.ErrFullURLCollision.
 func (shortenerService *URLShortenerService) SetFullURL(ctx context.Context, URLData model.RequestURLData) (model.ResponcePostURLData, error) {
 	const maxAttemptsToGenerateKey = 10
 	var responseData model.ResponcePostURLData
@@ -109,15 +121,13 @@ func (shortenerService *URLShortenerService) SetFullURL(ctx context.Context, URL
 		break
 	}
 
-	resShortURL, err := url.JoinPath(shortenerService.URLBaseAddr, responseData.ShortURL)
-	if err != nil {
-		return model.ResponcePostURLData{}, err
-	}
-	responseData.ShortURL = resShortURL
+	responseData.ShortURL = shortenerService.buildShortURL(responseData.ShortURL)
 
 	return responseData, collisionErr
 }
 
+// SetFullURLBatch сокращает пачку URL, повторно генерируя ключи для записей с коллизией.
+// Если часть URL уже сокращена, дополнительно возвращает repository.ErrFullURLCollision.
 func (shortenerService *URLShortenerService) SetFullURLBatch(ctx context.Context, URLDatas []model.RequestURLData) ([]model.ResponcePostURLData, error) {
 	const maxAttemptsToGenerateKey = 10
 	responseDataBatch := make([]model.ResponcePostURLData, 0, len(URLDatas))
@@ -162,17 +172,13 @@ func (shortenerService *URLShortenerService) SetFullURLBatch(ctx context.Context
 	}
 
 	for i := range responseDataBatch {
-		resShortURL, err := url.JoinPath(shortenerService.URLBaseAddr, responseDataBatch[i].ShortURL)
-		if err != nil {
-			return nil, err
-		}
-		responseDataBatch[i].ShortURL = resShortURL
+		responseDataBatch[i].ShortURL = shortenerService.buildShortURL(responseDataBatch[i].ShortURL)
 	}
 
 	return responseDataBatch, collisionErr
 }
 
-// Generate a random short key (generated by AI)
+// generateShortKey генерирует случайный ключ из 6 букв и цифр.
 func generateShortKey() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	const keyLength = 6

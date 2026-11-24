@@ -4,7 +4,7 @@ package server
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,16 +21,19 @@ import (
 
 // StartURLShortenerServer инициализирует конфигурацию, логгер и хранилище (PostgreSQL или in-memory),
 // запускает сервер и блокируется до SIGINT/SIGTERM, после чего завершает работу корректно.
-func StartURLShortenerServer() {
-	conf := config.InitConfig()
-	err := logger.SetLogDirectory(conf.LogDirectory)
+func StartURLShortenerServer() error {
+	conf, err := config.InitConfig()
 	if err != nil {
-		log.Fatal(err.Error())
+		return err
+	}
+	err = logger.SetLogDirectory(conf.LogDirectory)
+	if err != nil {
+		return err
 	}
 
 	logger, err := logger.InitializeRootLogger("server", "info")
 	if err != nil {
-		log.Fatal(err.Error())
+		return err
 	}
 	zap.RedirectStdLog(logger)
 
@@ -39,14 +42,14 @@ func StartURLShortenerServer() {
 	if len(conf.DBConnectionString) != 0 {
 		st, err := repository.NewDBStorage(conf.DBConnectionString, &conf.PendingMessageProcessorParams, logger.Named("storage"))
 		if err != nil {
-			log.Fatal(err.Error())
+			return err
 		}
 		logger.Info("Db storage initialized")
 		storage = st
 	} else {
 		st, err := repository.NewRuntimeStorage(conf.FileStoragePath, &conf.PendingMessageProcessorParams, logger.Named("storage"))
 		if err != nil {
-			log.Fatal(err.Error())
+			return err
 		}
 		logger.Info("Runtime storage initialized")
 		storage = st
@@ -54,7 +57,7 @@ func StartURLShortenerServer() {
 
 	router, err := handler.NewURLShortenerRouter(conf.ServerBaseURL, conf.SecretKey, storage, conf.AuditServiceParams)
 	if err != nil {
-		logger.Fatal(err.Error())
+		return err
 	}
 
 	srv := &http.Server{
@@ -62,27 +65,33 @@ func StartURLShortenerServer() {
 		Handler: router.Mux,
 	}
 
+	serverErr := make(chan error, 1)
 	go func() {
 		logger.Info("Starting server", zap.String("address", conf.ServerListenAddr))
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal(err.Error())
+			serverErr <- err
 		}
 	}()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	sig := <-sigChan
-
-	logger.Info("Received signal", zap.String("signal", sig.String()))
+	select {
+	case err := <-serverErr:
+		return err
+	case sig := <-sigChan:
+		logger.Info("Received signal", zap.String("signal", sig.String()))
+	}
 
 	shutdownCtx, shutdownRelease := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownRelease()
 
 	router.OnShutdown()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Fatal("Server shut down failed", zap.String("error", err.Error()))
+		return fmt.Errorf("server shut down failed: %w", err)
 	}
 
 	logger.Info("Server gracefully shut down")
+
+	return nil
 }

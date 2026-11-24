@@ -142,7 +142,7 @@ func (storage *RuntimeStorage) setURLImpl(URLRecord model.URLRecord) (model.Resp
 	if ok {
 		requestData, ok := storage.container.Get(existingShortURL)
 		if !ok {
-			panic(ErrNotFound)
+			return model.ResponcePostURLData{}, ErrNotFound
 		}
 
 		return model.ResponcePostURLData{ShortURL: existingShortURL, CorrelationID: requestData.CorrelationID}, ErrFullURLCollision

@@ -4,7 +4,7 @@ package config
 import (
 	"crypto/rand"
 	"flag"
-	"log"
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -38,21 +38,23 @@ type Config struct {
 
 // InitConfig инициализирует настройки из аргументов командной строки и переменных окружения.
 // Переменные окружения имеют приоритет над аргументами командной строки.
-func InitConfig() Config {
+func InitConfig() (Config, error) {
 	config := Config{}
 
 	setConfigFromArgs(&config)
-	setConfigFromEnv(&config)
+	if err := setConfigFromEnv(&config); err != nil {
+		return Config{}, err
+	}
 
 	if len(config.SecretKey) == 0 {
 		secretKey, err := generateSecretKey(32)
 		if err != nil {
-			log.Fatalf("Can't generate secret key. Error: %s", err.Error())
+			return Config{}, fmt.Errorf("can't generate secret key: %w", err)
 		}
 		config.SecretKey = secretKey
 	}
 
-	return config
+	return config, nil
 }
 
 // setConfigFromArgs заполняет config из флагов командной строки.
@@ -84,7 +86,7 @@ func setConfigFromArgs(config *Config) {
 }
 
 // setConfigFromEnv перезаписывает config значениями переменных окружения.
-func setConfigFromEnv(config *Config) {
+func setConfigFromEnv(config *Config) error {
 	if listenAddr, found := os.LookupEnv("SERVER_ADDRESS"); found {
 		config.ServerListenAddr = listenAddr
 	}
@@ -112,7 +114,7 @@ func setConfigFromEnv(config *Config) {
 	if tickTimeString, found := os.LookupEnv("SHORTENER_TICK_TIME"); found {
 		u64, err := strconv.ParseUint(tickTimeString, 10, 64)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		config.PendingMessageProcessorParams.TickTime = u64
 	}
@@ -120,7 +122,7 @@ func setConfigFromEnv(config *Config) {
 	if bufferSizeString, found := os.LookupEnv("SHORTENER_BUFFER_SIZE"); found {
 		u64, err := strconv.ParseUint(bufferSizeString, 10, 64)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		config.PendingMessageProcessorParams.BufferSize = u64
 	}
@@ -128,7 +130,7 @@ func setConfigFromEnv(config *Config) {
 	if maxBatchString, found := os.LookupEnv("SHORTENER_MAX_BATCH_SIZE"); found {
 		i, err := strconv.Atoi(maxBatchString)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		config.PendingMessageProcessorParams.MaxBatchSize = i
 	}
@@ -136,7 +138,7 @@ func setConfigFromEnv(config *Config) {
 	if workerPoolSizeString, found := os.LookupEnv("SHORTENER_WORKER_POOL_SIZE"); found {
 		u64, err := strconv.ParseUint(workerPoolSizeString, 10, 64)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		config.PendingMessageProcessorParams.WorkerPoolSize = u64
 	}
@@ -144,7 +146,7 @@ func setConfigFromEnv(config *Config) {
 	if maxParallelInsertsString, found := os.LookupEnv("SHORTENER_MAX_PARALLEL_INSERTS"); found {
 		u64, err := strconv.ParseUint(maxParallelInsertsString, 10, 64)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		config.PendingMessageProcessorParams.MaxParallelInsertsToQueue = u64
 	}
@@ -156,6 +158,8 @@ func setConfigFromEnv(config *Config) {
 	if auditURL, found := os.LookupEnv("AUDIT_URL"); found {
 		config.AuditServiceParams.URL = auditURL
 	}
+
+	return nil
 }
 
 // generateSecretKey возвращает size случайных байт.

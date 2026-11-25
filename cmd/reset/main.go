@@ -78,33 +78,40 @@ type target struct {
 
 func processDir(dir string) error {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool {
-		n := fi.Name()
-		return n != outFile
-	}, parser.ParseComments)
+	entries, err := os.ReadDir(dir) // sorted by filename
 	if err != nil {
 		return err
 	}
-	for n, pn := range pkgs {
-		if err := processPkg(dir, fset, n, pn); err != nil {
+	pkgs := map[string][]*ast.File{}
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !strings.HasSuffix(n, ".go") || n == outFile {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, n), nil, parser.ParseComments)
+		if err != nil {
+			return err
+		}
+		pkgs[f.Name.Name] = append(pkgs[f.Name.Name], f)
+	}
+	names := make([]string, 0, len(pkgs))
+	for n := range pkgs {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if err := processPkg(dir, fset, n, pkgs[n]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func processPkg(dir string, fset *token.FileSet, pkgName string, pkg *ast.Package) error {
+func processPkg(dir string, fset *token.FileSet, pkgName string, files []*ast.File) error {
 	var targets []target
 	hasReset := map[string]bool{}
 
-	fnames := make([]string, 0, len(pkg.Files))
-	for n := range pkg.Files {
-		fnames = append(fnames, n)
-	}
-	sort.Strings(fnames)
-
-	for _, fn := range fnames {
-		f := pkg.Files[fn]
+	for _, f := range files {
 		for _, decl := range f.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
